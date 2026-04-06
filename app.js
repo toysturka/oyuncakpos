@@ -10,6 +10,7 @@ let scannerInterval = null;
 let scannerTargetInputId = null;
 let scannerMode = null;
 let barcodeDetectorInstance = null;
+let html5QrCodeInstance = null;
 
 const defaultState = {
   settings: {
@@ -107,6 +108,27 @@ function setScannerOverlayVisible(visible, message = "Kamerayi barkoda dogru tut
   const scannerMessage = document.querySelector("#scannerMessage");
   overlay.classList.toggle("hidden-overlay", !visible);
   scannerMessage.textContent = message;
+}
+
+function setScannerSurface(mode) {
+  const reader = document.querySelector("#scannerReader");
+  const video = document.querySelector("#scannerVideo");
+  if (!reader || !video) return;
+
+  if (mode === "reader") {
+    reader.classList.remove("hidden-overlay");
+    video.classList.add("hidden-overlay");
+    return;
+  }
+
+  if (mode === "video") {
+    reader.classList.add("hidden-overlay");
+    video.classList.remove("hidden-overlay");
+    return;
+  }
+
+  reader.classList.add("hidden-overlay");
+  video.classList.remove("hidden-overlay");
 }
 
 function mapRemoteProduct(product) {
@@ -375,13 +397,49 @@ async function startBarcodeScanner(targetInputId, mode) {
     return showToast("Bu cihaz kamerayi desteklemiyor.");
   }
 
-  if (!("BarcodeDetector" in window)) {
-    return showToast("Bu tarayicida barkod tarama desteklenmiyor. Telefonunda Chrome veya Safari ile https uzerinden ac.");
-  }
-
   try {
+    await stopBarcodeScanner();
     scannerTargetInputId = targetInputId;
     scannerMode = mode;
+    setScannerOverlayVisible(true);
+    setScannerSurface("reader");
+
+    if (window.Html5Qrcode) {
+      html5QrCodeInstance = new window.Html5Qrcode("scannerReader");
+      const formatsToSupport = window.Html5QrcodeSupportedFormats
+        ? [
+            window.Html5QrcodeSupportedFormats.EAN_13,
+            window.Html5QrcodeSupportedFormats.EAN_8,
+            window.Html5QrcodeSupportedFormats.CODE_128,
+            window.Html5QrcodeSupportedFormats.UPC_A,
+            window.Html5QrcodeSupportedFormats.UPC_E
+          ]
+        : undefined;
+
+      await html5QrCodeInstance.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: 260, height: 140 },
+          formatsToSupport
+        },
+        async (decodedText) => {
+          const rawValue = String(decodedText || "").trim();
+          if (!rawValue) return;
+          await stopBarcodeScanner();
+          applyScannedBarcode(rawValue);
+        },
+        () => {}
+      );
+      return;
+    }
+
+    if (!("BarcodeDetector" in window)) {
+      setScannerOverlayVisible(false);
+      return showToast("Tarama destegi acilamadi. Linki yeniden yayinlayip tekrar dene.");
+    }
+
+    setScannerSurface("video");
     barcodeDetectorInstance = new window.BarcodeDetector({
       formats: ["ean_13", "ean_8", "code_128", "upc_a", "upc_e"]
     });
@@ -391,7 +449,6 @@ async function startBarcodeScanner(targetInputId, mode) {
     });
     const video = document.querySelector("#scannerVideo");
     video.srcObject = scannerStream;
-    setScannerOverlayVisible(true);
 
     scannerInterval = setInterval(async () => {
       if (!video.videoWidth) return;
@@ -400,7 +457,7 @@ async function startBarcodeScanner(targetInputId, mode) {
         if (!barcodes.length) return;
         const rawValue = barcodes[0].rawValue?.trim();
         if (!rawValue) return;
-        stopBarcodeScanner();
+        await stopBarcodeScanner();
         applyScannedBarcode(rawValue);
       } catch (error) {
         console.error(error);
@@ -408,12 +465,12 @@ async function startBarcodeScanner(targetInputId, mode) {
     }, 500);
   } catch (error) {
     console.error(error);
-    setScannerOverlayVisible(false);
-    showToast("Kamera acilamadi. Telefonunda kamera izni ver.");
+    await stopBarcodeScanner();
+    showToast("Kamera acilamadi. Telefonunda kamera izni ver ve tekrar dene.");
   }
 }
 
-function stopBarcodeScanner() {
+async function stopBarcodeScanner() {
   if (scannerInterval) {
     clearInterval(scannerInterval);
     scannerInterval = null;
@@ -424,6 +481,20 @@ function stopBarcodeScanner() {
   }
   const video = document.querySelector("#scannerVideo");
   if (video) video.srcObject = null;
+  if (html5QrCodeInstance) {
+    try {
+      await html5QrCodeInstance.stop();
+    } catch (error) {
+      console.error(error);
+    }
+    try {
+      await html5QrCodeInstance.clear();
+    } catch (error) {
+      console.error(error);
+    }
+    html5QrCodeInstance = null;
+  }
+  setScannerSurface("video");
   setScannerOverlayVisible(false);
 }
 
