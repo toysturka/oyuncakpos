@@ -39,7 +39,7 @@
         <p class="sidebar-label">Hizli Bilgi</p>
         <ul class="mini-stats">
           <li><span>Toplam Urun</span><strong id="miniProductCount">0</strong></li>
-          <li><span>Kritik Stok</span><strong id="miniCriticalCount">0</strong></li>
+          <li><span>Stokta Yok</span><strong id="miniCriticalCount">0</strong></li>
           <li><span>Bugun Satis</span><strong id="miniSalesCount">0</strong></li>
         </ul>
       </section>
@@ -89,7 +89,7 @@
         <div class="panel-grid">
           <article class="panel">
             <div class="panel-head">
-              <h3>Dusuk Stok Uyarilari</h3>
+              <h3>Stogu Bitenler</h3>
             </div>
             <div id="criticalStockList" class="list-stack"></div>
           </article>
@@ -274,7 +274,6 @@
                   <select id="catalogStatusFilter">
                     <option value="all">Tum durumlar</option>
                     <option value="ok">Normal</option>
-                    <option value="warn">Kritik</option>
                     <option value="danger">Tukendi</option>
                   </select>
                 </div>
@@ -378,11 +377,11 @@
               </div>
               <div class="field">
                 <label for="stockQuantity">Stok Adedi</label>
-                <input id="stockQuantity" name="stock" type="number" min="0" step="1" required>
+                <input id="stockQuantity" name="stock" type="number" min="0" step="1" placeholder="Bos birakirsan 0 olur">
               </div>
               <div class="field">
-                <label for="criticalStock">Kritik Stok</label>
-                <input id="criticalStock" name="criticalStock" type="number" min="0" step="1" value="5">
+                <label for="stockCode">Stok Kodu</label>
+                <input id="stockCode" name="stockCode" type="text" readonly>
               </div>
               <div class="field span-2">
                 <label for="productImageFile">Urun Resmi</label>
