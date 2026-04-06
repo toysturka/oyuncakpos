@@ -623,6 +623,73 @@ function setView(viewName) {
   document.querySelector(`.nav-tab[data-view="${viewName}"]`).classList.add("active");
   document.querySelector("#pageTitle").textContent = pageTitles[viewName];
   saveActiveView(viewName);
+  if (isMobileViewport()) {
+    closeMobileNav();
+  }
+}
+
+function openMobileNav() {
+  const overlay = document.querySelector("#mobileNavOverlay");
+  const panel = document.querySelector("#mobileNavPanel");
+  const sidebar = document.querySelector(".sidebar");
+  document.body.classList.add("mobile-nav-open");
+  if (sidebar && isMobileViewport()) {
+    sidebar.setAttribute("aria-hidden", "true");
+    sidebar.style.display = "none";
+  }
+  if (overlay) overlay.style.display = "block";
+  if (panel) panel.style.display = "flex";
+}
+
+function closeMobileNav() {
+  const overlay = document.querySelector("#mobileNavOverlay");
+  const panel = document.querySelector("#mobileNavPanel");
+  const sidebar = document.querySelector(".sidebar");
+  document.body.classList.remove("mobile-nav-open");
+  if (sidebar && isMobileViewport()) {
+    sidebar.setAttribute("aria-hidden", "true");
+    sidebar.style.display = "none";
+  }
+  if (overlay) overlay.style.display = "none";
+  if (panel) panel.style.display = "none";
+}
+
+function toggleMobileNav() {
+  if (document.body.classList.contains("mobile-nav-open")) closeMobileNav();
+  else openMobileNav();
+}
+
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 1120px)").matches;
+}
+
+function syncMobileLayout() {
+  const sidebar = document.querySelector(".sidebar");
+  const overlay = document.querySelector("#mobileNavOverlay");
+  const panel = document.querySelector("#mobileNavPanel");
+
+  if (!sidebar || !overlay || !panel) return;
+
+  if (isMobileViewport()) {
+    sidebar.setAttribute("aria-hidden", "true");
+    sidebar.style.display = "none";
+    sidebar.style.visibility = "hidden";
+    sidebar.style.pointerEvents = "none";
+
+    if (!document.body.classList.contains("mobile-nav-open")) {
+      overlay.style.display = "none";
+      panel.style.display = "none";
+    }
+    return;
+  }
+
+  document.body.classList.remove("mobile-nav-open");
+  sidebar.removeAttribute("aria-hidden");
+  sidebar.style.display = "";
+  sidebar.style.visibility = "";
+  sidebar.style.pointerEvents = "";
+  overlay.style.display = "";
+  panel.style.display = "";
 }
 
 function renderDashboard() {
@@ -1963,7 +2030,23 @@ function handleDocumentInput(event) {
 
 function bindEvents() {
   document.querySelectorAll(".nav-tab").forEach((button) => {
-    button.addEventListener("click", () => setView(button.dataset.view));
+    button.addEventListener("click", () => {
+      setView(button.dataset.view);
+      if (isMobileViewport()) closeMobileNav();
+    });
+  });
+  document.querySelectorAll(".mobile-nav-link").forEach((button) => {
+    button.addEventListener("click", () => {
+      setView(button.dataset.mobileView);
+      closeMobileNav();
+    });
+  });
+  document.querySelector("#mobileMenuBtn").addEventListener("click", toggleMobileNav);
+  document.querySelector("#mobileMenuCloseBtn").addEventListener("click", closeMobileNav);
+  document.querySelector("#mobileMenuClosePanelBtn").addEventListener("click", closeMobileNav);
+  document.querySelector("#mobileNavOverlay").addEventListener("click", closeMobileNav);
+  window.addEventListener("resize", () => {
+    syncMobileLayout();
   });
 
   document.querySelector("#productForm").addEventListener("submit", handleProductSubmit);
@@ -2038,6 +2121,7 @@ async function init() {
   initClock();
   renderAll();
   setView(loadActiveView());
+  syncMobileLayout();
   updatePaymentMethodButtons();
   refreshInlinePriceChangeState();
   updateBarcodePreview(document.querySelector("#productBarcode").value);
