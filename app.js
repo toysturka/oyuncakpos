@@ -142,6 +142,7 @@ function mapRemoteProduct(product) {
     wholesalePrice: Number(product.wholesale_price || 0),
     stock: Number(product.stock || 0),
     criticalStock: Number(product.critical_stock || 0),
+    stockCode: product.stock_code || generateStockCode(product.wholesale_price || 0),
     image: product.image_url || ""
   };
 }
@@ -302,8 +303,16 @@ function showToast(message) {
 
 function getStatus(stock, criticalStock) {
   if (stock <= 0) return { label: "Tukendi", className: "danger" };
-  if (stock <= criticalStock) return { label: "Kritik", className: "warn" };
   return { label: "Normal", className: "ok" };
+}
+
+function generateStockCode(wholesalePrice) {
+  const normalizedValue = Number(String(wholesalePrice ?? "").replace(",", "."));
+  const safeValue = Number.isFinite(normalizedValue) && normalizedValue >= 0 ? normalizedValue : 0;
+  const priceText = Number.isInteger(safeValue)
+    ? String(safeValue)
+    : safeValue.toFixed(2).replace(/\.00$/, "").replace(".", "");
+  return `TT-${priceText} 0004`;
 }
 
 function getCustomerName(customerId) {
@@ -772,13 +781,13 @@ function renderDashboard() {
 
   const dailyRevenue = todaySales.reduce((sum, sale) => sum + sale.total, 0);
   const totalStock = state.products.reduce((sum, product) => sum + Number(product.stock), 0);
-  const criticalCount = state.products.filter((product) => product.stock <= product.criticalStock).length;
+  const outOfStockCount = state.products.filter((product) => product.stock <= 0).length;
 
   const cards = [
     { label: "Toplam Urun Cesidi", value: state.products.length },
     { label: "Toplam Stok", value: totalStock },
     { label: "Bugun Ciro", value: formatCurrency(dailyRevenue) },
-    { label: "Kritik Stok", value: criticalCount }
+    { label: "Stokta Yok", value: outOfStockCount }
   ];
 
   document.querySelector("#dashboardStats").innerHTML = cards
@@ -786,11 +795,11 @@ function renderDashboard() {
     .join("");
 
   document.querySelector("#miniProductCount").textContent = state.products.length;
-  document.querySelector("#miniCriticalCount").textContent = criticalCount;
+  document.querySelector("#miniCriticalCount").textContent = outOfStockCount;
   document.querySelector("#miniSalesCount").textContent = todaySales.length;
 
   const criticalProducts = state.products
-    .filter((product) => product.stock <= product.criticalStock)
+    .filter((product) => product.stock <= 0)
     .sort((a, b) => a.stock - b.stock);
 
   document.querySelector("#criticalStockList").innerHTML = criticalProducts.length
@@ -811,7 +820,7 @@ function renderDashboard() {
           `;
         })
         .join("")
-    : `<article class="record-card"><span class="muted">Kritik stokta urun yok.</span></article>`;
+    : `<article class="record-card"><span class="muted">Stogu biten urun yok.</span></article>`;
 
   const activities = [
     ...state.sales.map((sale) => ({
@@ -879,9 +888,9 @@ function renderProducts() {
       detail: "Resim yuklenmis kart"
     },
     {
-      label: "Kritik Stok",
-      value: state.products.filter((product) => product.stock > 0 && product.stock <= product.criticalStock).length,
-      detail: "Yenileme bekleyen urun"
+      label: "Stokta Olan",
+      value: state.products.filter((product) => product.stock > 0).length,
+      detail: "Rafinda bulunan urun"
     },
     {
       label: "Stokta Yok",
@@ -895,7 +904,7 @@ function renderProducts() {
     .join("");
 
   let filteredProducts = state.products.filter((product) => {
-    const searchMatch = [product.name, product.barcode, product.category, product.brand].join(" ").toLowerCase().includes(searchValue);
+    const searchMatch = [product.name, product.barcode, product.stockCode, product.category, product.brand].join(" ").toLowerCase().includes(searchValue);
     const productStatus = getStatus(product.stock, product.criticalStock).className;
     const categoryMatch = categoryFilter === "all" ? true : (product.category || "") === categoryFilter;
     const statusMatch = statusFilter === "all" ? true : productStatus === statusFilter;
@@ -933,7 +942,7 @@ function renderProducts() {
     ? filteredProducts
         .map((product) => {
           const status = getStatus(product.stock, product.criticalStock);
-          const stockRatioBase = Math.max(product.stock, product.criticalStock || 1, 1);
+          const stockRatioBase = Math.max(product.stock, 1);
           const stockRatio = Math.max(8, Math.min(100, (product.stock / stockRatioBase) * 100));
           return `
             <tr>
@@ -964,7 +973,7 @@ function renderProducts() {
                     <span class="status ${status.className}">${status.label}</span>
                   </div>
                   <div class="stock-bar ${status.className}"><span style="width:${stockRatio}%"></span></div>
-                  <span class="muted">Kritik esik: ${product.criticalStock}</span>
+                  <span class="muted">Stok kodu: ${escapeHtml(product.stockCode || generateStockCode(product.wholesalePrice))}</span>
                 </div>
               </td>
               <td>
@@ -998,7 +1007,7 @@ function renderProducts() {
                 <div class="barcode-cell">
                   <small>Barkod</small>
                   <strong class="barcode-code">${escapeHtml(product.barcode)}</strong>
-                  <span class="muted">${product.image ? "Resimli kart" : "Standart kart"}</span>
+                  <span class="muted">${escapeHtml(product.stockCode || generateStockCode(product.wholesalePrice))}</span>
                 </div>
               </td>
               <td>
@@ -1272,10 +1281,21 @@ async function persistProductRemote(product) {
     wholesale_price: product.wholesalePrice,
     stock: product.stock,
     critical_stock: product.criticalStock,
+    stock_code: product.stockCode || generateStockCode(product.wholesalePrice),
     image_url: product.image || ""
   };
   const { error } = await supabaseClient.from("products").upsert(payload);
-  if (error) throw error;
+  if (!error) return;
+
+  if (String(error.message || "").toLowerCase().includes("stock_code")) {
+    const fallbackPayload = { ...payload };
+    delete fallbackPayload.stock_code;
+    const fallbackResult = await supabaseClient.from("products").upsert(fallbackPayload);
+    if (fallbackResult.error) throw fallbackResult.error;
+    return;
+  }
+
+  throw error;
 }
 
 async function persistCustomerRemote(customer) {
@@ -1380,7 +1400,8 @@ function resetProductForm() {
   document.querySelector("#productId").value = "";
   document.querySelector("#productImageData").value = "";
   document.querySelector("#productImageFile").value = "";
-  document.querySelector("#criticalStock").value = 5;
+  document.querySelector("#stockQuantity").value = "";
+  document.querySelector("#stockCode").value = generateStockCode(0);
   updateProductImagePreview("");
   updateBarcodePreview("");
 }
@@ -1450,6 +1471,8 @@ async function handleProductSubmit(event) {
   event.preventDefault();
   const formData = new FormData(event.currentTarget);
   const id = formData.get("productId");
+  const wholesalePrice = Number(formData.get("wholesalePrice"));
+  const stockValue = formData.get("stock");
   const payload = {
     id: id || crypto.randomUUID(),
     name: formData.get("name").trim(),
@@ -1457,9 +1480,10 @@ async function handleProductSubmit(event) {
     category: formData.get("category").trim(),
     brand: formData.get("brand").trim(),
     retailPrice: Number(formData.get("retailPrice")),
-    wholesalePrice: Number(formData.get("wholesalePrice")),
-    stock: Number(formData.get("stock")),
-    criticalStock: Number(formData.get("criticalStock")),
+    wholesalePrice,
+    stock: stockValue === "" ? 0 : Number(stockValue),
+    criticalStock: 0,
+    stockCode: generateStockCode(wholesalePrice),
     image: formData.get("image").trim()
   };
 
@@ -1909,16 +1933,16 @@ async function handleDocumentClick(event) {
   if (editProductId) {
     const product = getProduct(editProductId);
     if (!product) return;
-    document.querySelector("#productId").value = product.id;
-    document.querySelector("#productName").value = product.name;
-    document.querySelector("#productBarcode").value = product.barcode;
-    document.querySelector("#productCategory").value = product.category;
-    document.querySelector("#productBrand").value = product.brand;
-    document.querySelector("#retailPrice").value = product.retailPrice;
-    document.querySelector("#wholesalePrice").value = product.wholesalePrice;
-    document.querySelector("#stockQuantity").value = product.stock;
-    document.querySelector("#criticalStock").value = product.criticalStock;
-    document.querySelector("#productImageData").value = product.image || "";
+  document.querySelector("#productId").value = product.id;
+  document.querySelector("#productName").value = product.name;
+  document.querySelector("#productBarcode").value = product.barcode;
+  document.querySelector("#productCategory").value = product.category;
+  document.querySelector("#productBrand").value = product.brand;
+  document.querySelector("#retailPrice").value = product.retailPrice;
+  document.querySelector("#wholesalePrice").value = product.wholesalePrice;
+  document.querySelector("#stockQuantity").value = product.stock;
+  document.querySelector("#stockCode").value = product.stockCode || generateStockCode(product.wholesalePrice);
+  document.querySelector("#productImageData").value = product.image || "";
     document.querySelector("#productImageFile").value = "";
     updateProductImagePreview(product.image || "");
     updateBarcodePreview(product.barcode);
@@ -2163,6 +2187,9 @@ function bindEvents() {
   document.querySelector("#productName").addEventListener("input", () => updateBarcodePreview(document.querySelector("#productBarcode").value));
   document.querySelector("#productCategory").addEventListener("input", () => updateBarcodePreview(document.querySelector("#productBarcode").value));
   document.querySelector("#retailPrice").addEventListener("input", () => updateBarcodePreview(document.querySelector("#productBarcode").value));
+  document.querySelector("#wholesalePrice").addEventListener("input", (event) => {
+    document.querySelector("#stockCode").value = generateStockCode(event.target.value);
+  });
   document.querySelector("#seedDemoBtn").addEventListener("click", handleSeedDemo);
   document.querySelector("#exportBtn").addEventListener("click", exportData);
   document.querySelector("#importFile").addEventListener("change", importData);
@@ -2195,6 +2222,7 @@ async function init() {
   syncMobileLayout();
   updatePaymentMethodButtons();
   refreshInlinePriceChangeState();
+  document.querySelector("#stockCode").value = generateStockCode(0);
   updateBarcodePreview(document.querySelector("#productBarcode").value);
   await initSupabaseAuth();
 }
