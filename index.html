@@ -15,6 +15,7 @@
           <p class="eyebrow">Oyuncak Magazasi</p>
           <h1>OyuncakPOS</h1>
         </div>
+        <button id="mobileMenuCloseBtn" class="ghost-btn mobile-menu-close-btn" type="button">Kapat</button>
       </div>
 
       <nav class="nav-tabs" aria-label="Ana bolumler">
@@ -47,6 +48,13 @@
     <main class="main-content">
       <header class="page-header">
         <div>
+          <button id="mobileMenuBtn" class="ghost-btn mobile-menu-btn" type="button" aria-label="Menüyü aç">
+            <span class="hamburger-lines" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </span>
+          </button>
           <p class="eyebrow">Panel</p>
           <h2 id="pageTitle">Genel Bakis</h2>
         </div>
@@ -114,7 +122,7 @@
                     <input id="barcodeInput" name="barcode" type="text" placeholder="Urun barkodunu okutunuz...">
                     <button type="submit" class="primary-btn">Ara</button>
                     <button type="button" id="priceCheckBtn" class="ghost-btn">Fiyat Gor</button>
-                    <button type="button" class="ghost-btn" data-scan-target="barcodeInput" data-scan-mode="sale-add">Kamerayla Tara</button>
+                    <button type="button" class="ghost-btn" data-scan-target="barcodeInput" data-scan-mode="sale-add">Tara</button>
                   </div>
                 </div>
               </form>
@@ -222,7 +230,7 @@
               <label for="productSearchInput">Ara</label>
               <div class="inline-field">
                 <input id="productSearchInput" type="search" placeholder="Urun adi veya barkod yaz">
-                <button type="button" class="ghost-btn" data-scan-target="productSearchInput" data-scan-mode="search">Kamerayla Tara</button>
+                <button type="button" class="ghost-btn" data-scan-target="productSearchInput" data-scan-mode="search">Tara</button>
               </div>
             </div>
 
@@ -349,7 +357,7 @@
                 <label for="productBarcode">Barkod</label>
                 <div class="inline-field">
                   <input id="productBarcode" name="barcode" type="text" required>
-                  <button type="button" class="ghost-btn" data-scan-target="productBarcode" data-scan-mode="editor">Kamerayla Tara</button>
+                  <button type="button" class="ghost-btn" data-scan-target="productBarcode" data-scan-mode="editor">Tara</button>
                 </div>
               </div>
               <div class="field">
@@ -569,6 +577,28 @@
   </div>
 
   <div id="toast" class="toast" aria-live="polite"></div>
+  <div id="mobileNavOverlay" class="mobile-nav-overlay"></div>
+  <div id="mobileNavPanel" class="mobile-nav-panel">
+    <div class="mobile-nav-card">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Menu</p>
+          <h3>Bolumler</h3>
+        </div>
+        <button id="mobileMenuClosePanelBtn" class="ghost-btn" type="button">Kapat</button>
+      </div>
+      <div class="mobile-nav-links">
+        <button class="mobile-nav-link" data-mobile-view="dashboard" type="button">Genel Bakis</button>
+        <button class="mobile-nav-link" data-mobile-view="sales" type="button">Satis Ekrani</button>
+        <button class="mobile-nav-link" data-mobile-view="products" type="button">Urunler</button>
+        <button class="mobile-nav-link" data-mobile-view="product-editor" type="button">Urun Ekle</button>
+        <button class="mobile-nav-link" data-mobile-view="inventory" type="button">Stok Hareketi</button>
+        <button class="mobile-nav-link" data-mobile-view="customers" type="button">Musteriler</button>
+        <button class="mobile-nav-link" data-mobile-view="reports" type="button">Raporlar</button>
+        <button class="mobile-nav-link" data-mobile-view="settings" type="button">Ayarlar</button>
+      </div>
+    </div>
+  </div>
 
   <div id="authOverlay" class="auth-overlay hidden-overlay">
     <div class="auth-card">
@@ -603,6 +633,7 @@
         </div>
         <button type="button" id="closeScannerBtn" class="ghost-btn">Kapat</button>
       </div>
+      <div id="scannerReader" class="scanner-reader hidden-overlay"></div>
       <video id="scannerVideo" class="scanner-video" autoplay playsinline muted></video>
       <p id="scannerMessage" class="muted">Kamerayi barkoda dogru tut.</p>
     </div>
@@ -610,6 +641,7 @@
 
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://unpkg.com/html5-qrcode" defer></script>
   <script src="app.js"></script>
 </body>
 </html>
