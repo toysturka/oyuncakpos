@@ -32,6 +32,27 @@ body {
     linear-gradient(160deg, #fff8f0 0%, #f4efe8 48%, #eef5f3 100%);
 }
 
+body.compact-density .main-content {
+  padding: 18px;
+}
+
+body.compact-density .panel {
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+body.compact-density .stat-card {
+  padding: 16px;
+}
+
+body.compact-density .field input,
+body.compact-density .field select,
+body.compact-density .ghost-btn,
+body.compact-density .primary-btn,
+body.compact-density .import-btn {
+  min-height: 40px;
+}
+
 button,
 input,
 select {
@@ -205,6 +226,7 @@ select {
 
 .header-actions {
   flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .ghost-btn,
@@ -212,6 +234,15 @@ select {
 .primary-btn {
   padding: 12px 16px;
   box-shadow: var(--shadow);
+}
+
+.header-actions .ghost-btn,
+.header-actions .import-btn {
+  min-height: 34px;
+  padding: 7px 11px;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  box-shadow: none;
 }
 
 .ghost-btn,
@@ -398,6 +429,11 @@ select {
 
 .danger-lite-btn {
   color: var(--danger);
+}
+
+.success-lite-btn {
+  background: linear-gradient(135deg, #21b85b, #3ad276);
+  color: #fff;
 }
 
 .modern-table-wrap {
