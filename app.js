@@ -689,10 +689,6 @@ function mapExcelRowToProduct(row) {
       .replace(",", ".")
   );
 
-  const stockCodeFromFile = String(
-    getExcelCell(row, ["stok kodu", "stok kod", "stock code", "stockcode"])
-  ).trim();
-
   return {
     barcode,
     name,
@@ -700,7 +696,7 @@ function mapExcelRowToProduct(row) {
     retailPrice: Number.isFinite(retailPrice) ? retailPrice : 0,
     wholesalePrice: Number.isFinite(wholesalePrice) ? wholesalePrice : 0,
     stock: Number.isFinite(stock) ? stock : 0,
-    stockCode: stockCodeFromFile || generateStockCode(wholesalePrice)
+    stockCode: generateStockCode(wholesalePrice)
   };
 }
 
@@ -2865,6 +2861,8 @@ function bindEvents() {
   document.querySelector("#excelImportFile").addEventListener("change", importExcelProducts);
   document.querySelector("#downloadExcelTemplateBtn").addEventListener("click", downloadExcelTemplate);
   document.querySelector("#downloadSampleExcelBtn")?.addEventListener("click", downloadSampleExcelTemplate);
+  document.querySelector("#downloadExcelTemplateEditorBtn")?.addEventListener("click", downloadExcelTemplate);
+  document.querySelector("#downloadSampleExcelEditorBtn")?.addEventListener("click", downloadSampleExcelTemplate);
   document.querySelector("#salesHistoryDateFrom")?.addEventListener("change", renderSalesHistoryPage);
   document.querySelector("#salesHistoryDateTo")?.addEventListener("change", renderSalesHistoryPage);
   document.querySelector("#salesHistorySearch")?.addEventListener("input", renderSalesHistoryPage);
@@ -3332,8 +3330,7 @@ function downloadExcelTemplate() {
       Marka: "ToyStar",
       "Perakende Fiyat": 150,
       "Toptan Fiyat": 100,
-      Stok: 12,
-      "Stok Kodu": "TT-100 0004"
+      Stok: 12
     },
     {
       Barkod: "869100100002",
@@ -3341,8 +3338,7 @@ function downloadExcelTemplate() {
       Marka: "Mutlu Kids",
       "Perakende Fiyat": 220,
       "Toptan Fiyat": 160,
-      Stok: 8,
-      "Stok Kodu": "TT-160 0004"
+      Stok: 8
     }
   ];
 
@@ -3394,8 +3390,7 @@ function downloadSampleExcelTemplate() {
       Marka: "Speed Toys",
       "Perakende Fiyat": 750,
       "Toptan Fiyat": 500,
-      Stok: 14,
-      "Stok Kodu": "TT-500 0004"
+      Stok: 14
     },
     {
       Barkod: "869100100102",
@@ -3403,8 +3398,7 @@ function downloadSampleExcelTemplate() {
       Marka: "Mutlu Kids",
       "Perakende Fiyat": 420,
       "Toptan Fiyat": 300,
-      Stok: 9,
-      "Stok Kodu": "TT-300 0004"
+      Stok: 9
     },
     {
       Barkod: "869100100103",
@@ -3412,8 +3406,7 @@ function downloadSampleExcelTemplate() {
       Marka: "Mini Usta",
       "Perakende Fiyat": 180,
       "Toptan Fiyat": 120,
-      Stok: 25,
-      "Stok Kodu": "TT-120 0004"
+      Stok: 25
     }
   ];
 
@@ -3455,6 +3448,261 @@ function downloadSampleExcelTemplate() {
   link.remove();
   URL.revokeObjectURL(url);
   showToast("Örnek dolu şablon indirildi.");
+}
+
+function printSaleReceipt(saleId) {
+  const sale = getSaleById(saleId);
+  if (!sale) return showToast("Satış bulunamadı.");
+
+  const customer = state.customers.find((item) => item.id === sale.customerId);
+  const createdAt = sale.createdAt ? new Date(sale.createdAt) : new Date();
+  const safeDate = Number.isNaN(createdAt.getTime()) ? new Date() : createdAt;
+  const dateText = safeDate.toLocaleDateString("tr-TR");
+  const timeText = safeDate.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+  const totalQty = sale.items.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+  const totalUnitPrice = sale.items.reduce((sum, item) => sum + Number(item.price || 0), 0);
+  const customerLabel = customer?.name || "Genel Müşteri";
+  const receiptRows = sale.items
+    .map((item, index) => `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${escapeHtml(item.barcode || "-")}</td>
+        <td>${escapeHtml(item.name || "Ürün")}</td>
+        <td>${Number(item.quantity || 0).toFixed(2)}</td>
+        <td>Adet</td>
+        <td>${formatCurrency(item.price)}</td>
+        <td>${formatCurrency(Number(item.price || 0) * Number(item.quantity || 0))}</td>
+      </tr>
+    `)
+    .join("");
+
+  const printWindow = window.open("", "_blank", "width=980,height=900");
+  if (!printWindow) return showToast("Yazdırma penceresi açılamadı.");
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html lang="tr">
+    <head>
+      <meta charset="UTF-8">
+      <title>Bilgi Fişi</title>
+      <style>
+        * { box-sizing: border-box; }
+        body {
+          font-family: Arial, Helvetica, sans-serif;
+          color: #111827;
+          margin: 0;
+          padding: 18px;
+          background: #ffffff;
+          font-size: 11px;
+        }
+        .receipt-shell {
+          width: 100%;
+          max-width: 980px;
+          margin: 0 auto;
+        }
+        .receipt-header {
+          display: grid;
+          grid-template-columns: 1fr auto;
+          align-items: start;
+          gap: 24px;
+          padding-bottom: 10px;
+          border-bottom: 2px solid #1f2937;
+        }
+        .brand-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+        }
+        .brand-mark {
+          width: 46px;
+          height: 46px;
+          border: 1px solid #cfd4dc;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: 700;
+          font-size: 16px;
+        }
+        .brand-text h1 {
+          margin: 0;
+          font-size: 14px;
+          letter-spacing: 0.2px;
+        }
+        .brand-text p {
+          margin: 4px 0 0;
+          color: #4b5563;
+          font-size: 10px;
+        }
+        .receipt-meta {
+          text-align: right;
+          min-width: 150px;
+        }
+        .receipt-meta h2 {
+          margin: 0 0 12px;
+          font-size: 15px;
+          font-weight: 700;
+        }
+        .receipt-meta p {
+          margin: 3px 0;
+          font-size: 10px;
+        }
+        .receipt-info {
+          margin-top: 14px;
+          display: grid;
+          grid-template-columns: 230px 1fr;
+          gap: 16px;
+          align-items: start;
+        }
+        .info-box {
+          border: 1px solid #cfd4dc;
+          border-radius: 4px;
+          min-height: 58px;
+          padding: 8px 10px;
+        }
+        .info-box strong {
+          display: block;
+          font-size: 10px;
+          margin-bottom: 8px;
+        }
+        .info-box span {
+          display: block;
+          font-size: 11px;
+          font-weight: 700;
+        }
+        .receipt-table {
+          width: 100%;
+          margin-top: 18px;
+          border-collapse: collapse;
+        }
+        .receipt-table thead th {
+          text-align: left;
+          font-size: 10px;
+          padding: 8px 6px;
+          border-bottom: 1px solid #9ca3af;
+        }
+        .receipt-table tbody td {
+          padding: 8px 6px;
+          border-bottom: 1px solid #e5e7eb;
+          font-size: 10px;
+          vertical-align: top;
+        }
+        .receipt-table th:nth-child(1),
+        .receipt-table td:nth-child(1),
+        .receipt-table th:nth-child(4),
+        .receipt-table td:nth-child(4),
+        .receipt-table th:nth-child(5),
+        .receipt-table td:nth-child(5) {
+          text-align: center;
+        }
+        .receipt-table th:nth-child(6),
+        .receipt-table td:nth-child(6),
+        .receipt-table th:nth-child(7),
+        .receipt-table td:nth-child(7) {
+          text-align: right;
+        }
+        .receipt-footer {
+          display: flex;
+          justify-content: flex-end;
+          margin-top: 18px;
+        }
+        .totals-box {
+          width: 280px;
+        }
+        .totals-row {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 4px 0;
+          font-size: 11px;
+        }
+        .grand-total {
+          margin-top: 6px;
+          padding-top: 8px;
+          border-top: 2px solid #111827;
+          font-size: 15px;
+          font-weight: 700;
+        }
+        .receipt-note {
+          margin-top: 12px;
+          font-size: 10px;
+          color: #4b5563;
+        }
+        @media print {
+          body { padding: 10px; }
+          .receipt-shell { max-width: none; }
+        }
+      </style>
+    </head>
+    <body>
+      <div class="receipt-shell">
+        <div class="receipt-header">
+          <div class="brand-row">
+            <div class="brand-mark">TS</div>
+            <div class="brand-text">
+              <h1>${escapeHtml(state.settings.storeName || "TOYSTURKA")}</h1>
+              <p>Fiş/İrsaliye</p>
+            </div>
+          </div>
+          <div class="receipt-meta">
+            <h2>BİLGİ FİŞİ</h2>
+            <p><strong>Tarih:</strong> ${escapeHtml(dateText)}</p>
+            <p><strong>Saat:</strong> ${escapeHtml(timeText)}</p>
+          </div>
+        </div>
+
+        <div class="receipt-info">
+          <div class="info-box">
+            <strong>MÜŞTERİ BİLGİLERİ</strong>
+            <span>${escapeHtml(customerLabel)}</span>
+          </div>
+          <div></div>
+        </div>
+
+        <table class="receipt-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Barkod</th>
+              <th>Ürün Adı</th>
+              <th>Miktar</th>
+              <th>Birim</th>
+              <th>Birim Fiyat</th>
+              <th>Toplam</th>
+            </tr>
+          </thead>
+          <tbody>${receiptRows}</tbody>
+        </table>
+
+        <div class="receipt-footer">
+          <div class="totals-box">
+            <div class="totals-row">
+              <span>Toplam Ürün Çeşidi</span>
+              <strong>${sale.items.length}</strong>
+            </div>
+            <div class="totals-row">
+              <span>Toplam Miktar</span>
+              <strong>${totalQty.toFixed(2)}</strong>
+            </div>
+            <div class="totals-row">
+              <span>Toplam Birim Fiyat</span>
+              <strong>${formatCurrency(totalUnitPrice)}</strong>
+            </div>
+            ${sale.discount ? `<div class="totals-row"><span>İndirim</span><strong>${formatCurrency(sale.discount)}</strong></div>` : ""}
+            <div class="totals-row grand-total">
+              <span>GENEL TOPLAM</span>
+              <strong>${formatCurrency(sale.total)}</strong>
+            </div>
+          </div>
+        </div>
+
+        ${sale.note ? `<div class="receipt-note"><strong>Not:</strong> ${escapeHtml(sale.note)}</div>` : ""}
+      </div>
+      <script>window.onload = function(){ window.print(); };</script>
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
 }
 
 async function init() {
