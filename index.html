@@ -61,7 +61,6 @@
         <div class="header-actions">
           <span id="connectionBadge" class="chip">Yerel Mod</span>
           <button id="logoutBtn" class="ghost-btn" type="button" hidden>Çıkış Yap</button>
-          <button id="seedDemoBtn" class="ghost-btn">Demo Verisi Yükle</button>
           <button id="exportBtn" class="ghost-btn">Yedekle</button>
           <label class="ghost-btn import-btn" for="importFile">Geri Yükle</label>
           <input id="importFile" type="file" accept="application/json" hidden>
@@ -282,6 +281,9 @@
                 <div class="bulk-actions-buttons">
                   <button type="button" id="openProductEditorBtn" class="ghost-btn compact-btn">Ürün Ekle</button>
                   <button type="button" id="saveAllPricesBtn" class="ghost-btn compact-btn">Fiyatları Kaydet</button>
+                  <label for="excelImportFile" class="ghost-btn compact-btn success-lite-btn">Excel Aktar</label>
+                  <input id="excelImportFile" type="file" accept=".xlsx,.xls,.csv" hidden>
+                  <button type="button" id="downloadExcelTemplateBtn" class="ghost-btn compact-btn">Excel Şablon</button>
                   <button type="button" id="bulkPrintBarcodesBtn" class="ghost-btn compact-btn">Toplu Barkod Yazdır</button>
                   <button type="button" id="bulkDeleteProductsBtn" class="ghost-btn compact-btn danger-lite-btn">Toplu Sil</button>
                 </div>
@@ -330,10 +332,6 @@
                   <input id="productBarcode" name="barcode" type="text" required>
                   <button type="button" class="ghost-btn scan-btn" data-scan-target="productBarcode" data-scan-mode="editor">Tara</button>
                 </div>
-              </div>
-              <div class="field">
-                <label for="productCategory">Kategori</label>
-                <input id="productCategory" name="category" type="text" placeholder="Oyuncak Araba">
               </div>
               <div class="field">
                 <label for="productBrand">Marka</label>
@@ -525,6 +523,26 @@
                 <label for="storeCurrency">Para Birimi</label>
                 <input id="storeCurrency" name="storeCurrency" type="text" value="TRY">
               </div>
+              <div class="field span-2">
+                <label for="panelTitleSetting">Panel Başlığı</label>
+                <input id="panelTitleSetting" name="panelTitle" type="text" placeholder="OyuncakPOS">
+              </div>
+              <div class="field">
+                <label for="accentColorSetting">Tema Rengi</label>
+                <select id="accentColorSetting" name="accentColor">
+                  <option value="orange">Turuncu</option>
+                  <option value="blue">Mavi</option>
+                  <option value="green">Yeşil</option>
+                  <option value="red">Kırmızı</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="densitySetting">Görünüm Yoğunluğu</label>
+                <select id="densitySetting" name="density">
+                  <option value="comfortable">Rahat</option>
+                  <option value="compact">Sıkı</option>
+                </select>
+              </div>
               <div class="actions span-2">
                 <button type="submit" class="primary-btn">Ayarları Kaydet</button>
               </div>
@@ -651,6 +669,8 @@
   <script src="config.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/html5-qrcode" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
