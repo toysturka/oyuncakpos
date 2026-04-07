@@ -11,10 +11,11 @@ let scannerTargetInputId = null;
 let scannerMode = null;
 let barcodeDetectorInstance = null;
 let html5QrCodeInstance = null;
+let scannerLocked = false;
 
 const defaultState = {
   settings: {
-    storeName: "OyuncakPOS Magaza",
+    storeName: "OyuncakPOS Mağaza",
     storeOwner: "",
     storeAddress: "",
     storePhone: "",
@@ -24,7 +25,7 @@ const defaultState = {
   customers: [
     {
       id: crypto.randomUUID(),
-      name: "Genel Musteri",
+      name: "Genel Müşteri",
       type: "Perakende",
       phone: "",
       balance: 0,
@@ -40,12 +41,12 @@ let state = loadState();
 let toastTimer;
 
 const pageTitles = {
-  dashboard: "Genel Bakis",
-  sales: "Satis Ekrani",
-  products: "Urunler",
-  "product-editor": "Urun Ekle",
+  dashboard: "Genel Bakış",
+  sales: "Satış Ekranı",
+  products: "Ürünler",
+  "product-editor": "Ürün Ekle",
   inventory: "Stok Hareketi",
-  customers: "Musteriler",
+  customers: "Müşteriler",
   reports: "Raporlar",
   settings: "Ayarlar"
 };
@@ -103,11 +104,31 @@ function setAuthOverlayVisible(visible, message = "") {
   authMessage.textContent = message;
 }
 
-function setScannerOverlayVisible(visible, message = "Kamerayi barkoda dogru tut.") {
+function setScannerOverlayVisible(visible, message = "Kamerayı barkoda doğru tut.") {
   const overlay = document.querySelector("#scannerOverlay");
   const scannerMessage = document.querySelector("#scannerMessage");
   overlay.classList.toggle("hidden-overlay", !visible);
   scannerMessage.textContent = message;
+}
+
+function setProductQuickEditVisible(visible) {
+  const overlay = document.querySelector("#productQuickEditOverlay");
+  if (!overlay) return;
+  overlay.classList.toggle("hidden-overlay", !visible);
+}
+
+function openProductQuickEdit(productId) {
+  const product = getProduct(productId);
+  if (!product) return showToast("Ürün bulunamadı.");
+
+  document.querySelector("#productQuickEditId").value = product.id;
+  document.querySelector("#productQuickEditTitle").textContent = product.name;
+  document.querySelector("#productQuickEditName").value = product.name;
+  document.querySelector("#productQuickEditRetail").value = Number(product.retailPrice || 0);
+  document.querySelector("#productQuickEditWholesale").value = Number(product.wholesalePrice || 0);
+  document.querySelector("#productQuickEditStock").value = Number(product.stock || 0);
+  document.querySelector("#productQuickEditBarcode").value = product.barcode || "";
+  setProductQuickEditVisible(true);
 }
 
 function setScannerSurface(mode) {
@@ -179,8 +200,8 @@ async function bootstrapCloudSession(session) {
     isCloudMode = false;
     activeUser = null;
     activeStoreId = null;
-    updateConnectionBadge("Cloud Girisi Gerekli");
-    setAuthOverlayVisible(true, "Supabase kullaniciyla giris yap.");
+    updateConnectionBadge("Cloud Girişi Gerekli");
+    setAuthOverlayVisible(true, "Supabase kullanıcısıyla giriş yap.");
     return;
   }
 
@@ -196,8 +217,8 @@ async function bootstrapCloudSession(session) {
   if (storeError || !store) {
     isCloudMode = false;
     activeStoreId = null;
-    updateConnectionBadge("Magaza Bulunamadi");
-    setAuthOverlayVisible(true, "Magaza kaydi bulunamadi. SQL adimlarini kontrol et.");
+    updateConnectionBadge("Mağaza Bulunamadı");
+    setAuthOverlayVisible(true, "Mağaza kaydı bulunamadı. SQL adımlarını kontrol et.");
     return;
   }
 
@@ -222,7 +243,7 @@ async function loadRemoteState() {
 
   if (settingsRes.error || productsRes.error || customersRes.error || salesRes.error || saleItemsRes.error || inventoryRes.error) {
     console.error(settingsRes.error || productsRes.error || customersRes.error || salesRes.error || saleItemsRes.error || inventoryRes.error);
-    showToast("Bulut verileri yuklenemedi.");
+    showToast("Bulut verileri yüklenemedi.");
     return;
   }
 
@@ -241,7 +262,7 @@ async function loadRemoteState() {
 
   state = {
     settings: {
-      storeName: settingsRes.data?.store_name || "OyuncakPOS Magaza",
+      storeName: settingsRes.data?.store_name || "OyuncakPOS Mağaza",
       storeOwner: settingsRes.data?.store_owner || "",
       storeAddress: settingsRes.data?.store_address || "",
       storePhone: settingsRes.data?.store_phone || "",
@@ -302,7 +323,7 @@ function showToast(message) {
 }
 
 function getStatus(stock, criticalStock) {
-  if (stock <= 0) return { label: "Tukendi", className: "danger" };
+  if (stock <= 0) return { label: "Tükendi", className: "danger" };
   return { label: "Normal", className: "ok" };
 }
 
@@ -316,39 +337,54 @@ function generateStockCode(wholesalePrice) {
 }
 
 function getCustomerName(customerId) {
-  return state.customers.find((customer) => customer.id === customerId)?.name || "Genel Musteri";
+  return state.customers.find((customer) => customer.id === customerId)?.name || "Genel Müşteri";
 }
 
 function getProduct(productId) {
   return state.products.find((product) => product.id === productId);
 }
 
-async function updateProductPrices(productId, retailPrice, wholesalePrice) {
+function findProductsForSaleQuery(query) {
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+  if (!normalizedQuery) return [];
+
+  return state.products.filter((product) =>
+    [product.name, product.barcode, product.stockCode, product.category, product.brand]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedQuery)
+  );
+}
+
+async function updateProductValues(productId, retailPrice, wholesalePrice, stockValue) {
   const product = getProduct(productId);
   if (!product) {
-    showToast("Urun bulunamadi.");
+    showToast("Ürün bulunamadı.");
     return false;
   }
 
   const retail = Number(retailPrice);
   const wholesale = Number(wholesalePrice);
+  const stock = Number(stockValue);
 
-  if (Number.isNaN(retail) || Number.isNaN(wholesale) || retail < 0 || wholesale < 0) {
-    showToast("Fiyatlar gecerli bir sayi olmali.");
+  if (Number.isNaN(retail) || Number.isNaN(wholesale) || Number.isNaN(stock) || retail < 0 || wholesale < 0 || stock < 0) {
+    showToast("Fiyat ve stok alanları geçerli olmalı.");
     return false;
   }
 
   product.retailPrice = retail;
   product.wholesalePrice = wholesale;
+  product.stock = stock;
   try {
     await persistProductRemote(product);
   } catch (error) {
     console.error(error);
-    showToast("Fiyatlar buluta kaydedilemedi.");
+    showToast("Ürün bilgileri buluta kaydedilemedi.");
     return false;
   }
   renderAll();
-  showToast(`${product.name} fiyatlari guncellendi.`);
+  showToast(`${product.name} bilgileri güncellendi.`);
   return true;
 }
 
@@ -359,24 +395,31 @@ async function saveAllVisiblePriceEdits() {
   for (const retailInput of retailInputs) {
     const productId = retailInput.dataset.inlineRetail;
     const wholesaleInput = document.querySelector(`[data-inline-wholesale="${productId}"]`);
+    const stockInput = document.querySelector(`[data-inline-stock="${productId}"]`);
     const product = getProduct(productId);
-    if (!wholesaleInput || !product) continue;
+    if (!wholesaleInput || !stockInput || !product) continue;
 
     const retailValue = Number(retailInput.value);
     const wholesaleValue = Number(wholesaleInput.value);
-    if (Number.isNaN(retailValue) || Number.isNaN(wholesaleValue) || retailValue < 0 || wholesaleValue < 0) {
-      showToast("Kayit oncesi gecersiz fiyatlari duzelt.");
+    const stockValue = Number(stockInput.value);
+    if (Number.isNaN(retailValue) || Number.isNaN(wholesaleValue) || Number.isNaN(stockValue) || retailValue < 0 || wholesaleValue < 0 || stockValue < 0) {
+      showToast("Kayıt öncesi geçersiz fiyat veya stok alanlarını düzelt.");
       return;
     }
 
-    if (retailValue !== Number(product.retailPrice) || wholesaleValue !== Number(product.wholesalePrice)) {
+    if (
+      retailValue !== Number(product.retailPrice) ||
+      wholesaleValue !== Number(product.wholesalePrice) ||
+      stockValue !== Number(product.stock)
+    ) {
       product.retailPrice = retailValue;
       product.wholesalePrice = wholesaleValue;
+      product.stock = stockValue;
       try {
         await persistProductRemote(product);
       } catch (error) {
         console.error(error);
-        showToast("Toplu fiyat kaydi sirasinda hata oldu.");
+        showToast("Toplu kayıt sırasında hata oldu.");
         return;
       }
       changedCount += 1;
@@ -384,12 +427,12 @@ async function saveAllVisiblePriceEdits() {
   }
 
   if (!changedCount) {
-    showToast("Kaydedilecek fiyat degisikligi yok.");
+    showToast("Kaydedilecek değişiklik yok.");
     return;
   }
 
   renderAll();
-  showToast(`${changedCount} urunun fiyatlari kaydedildi.`);
+  showToast(`${changedCount} ürünün fiyat ve stok bilgileri kaydedildi.`);
 }
 
 function getSelectedProducts() {
@@ -403,16 +446,51 @@ function syncSelectedProductsWithState() {
 
 async function startBarcodeScanner(targetInputId, mode) {
   if (!("mediaDevices" in navigator) || !navigator.mediaDevices.getUserMedia) {
-    return showToast("Bu cihaz kamerayi desteklemiyor.");
+    return showToast("Bu cihaz kamerayı desteklemiyor.");
   }
 
   try {
     await stopBarcodeScanner();
     scannerTargetInputId = targetInputId;
     scannerMode = mode;
+    scannerLocked = false;
     setScannerOverlayVisible(true);
-    setScannerSurface("reader");
 
+    if ("BarcodeDetector" in window) {
+      setScannerSurface("video");
+      barcodeDetectorInstance = new window.BarcodeDetector({
+        formats: ["ean_13", "ean_8", "code_128", "upc_a", "upc_e"]
+      });
+      scannerStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        },
+        audio: false
+      });
+      const video = document.querySelector("#scannerVideo");
+      video.srcObject = scannerStream;
+
+      scannerInterval = setInterval(async () => {
+        if (!video.videoWidth || scannerLocked) return;
+        try {
+          const barcodes = await barcodeDetectorInstance.detect(video);
+          if (!barcodes.length) return;
+          const rawValue = barcodes[0].rawValue?.trim();
+          if (!rawValue) return;
+          scannerLocked = true;
+          applyScannedBarcode(rawValue);
+          if (navigator.vibrate) navigator.vibrate(60);
+          void stopBarcodeScanner();
+        } catch (error) {
+          console.error(error);
+        }
+      }, 80);
+      return;
+    }
+
+    setScannerSurface("reader");
     if (window.Html5Qrcode) {
       html5QrCodeInstance = new window.Html5Qrcode("scannerReader");
       const formatsToSupport = window.Html5QrcodeSupportedFormats
@@ -428,58 +506,36 @@ async function startBarcodeScanner(targetInputId, mode) {
       await html5QrCodeInstance.start(
         { facingMode: "environment" },
         {
-          fps: 10,
-          qrbox: { width: 260, height: 140 },
+          fps: 24,
+          qrbox: { width: 180, height: 90 },
+          aspectRatio: 1.7777778,
+          disableFlip: false,
           formatsToSupport
         },
-        async (decodedText) => {
+        (decodedText) => {
           const rawValue = String(decodedText || "").trim();
-          if (!rawValue) return;
-          await stopBarcodeScanner();
+          if (!rawValue || scannerLocked) return;
+          scannerLocked = true;
           applyScannedBarcode(rawValue);
+          if (navigator.vibrate) navigator.vibrate(60);
+          void stopBarcodeScanner();
         },
         () => {}
       );
       return;
     }
 
-    if (!("BarcodeDetector" in window)) {
-      setScannerOverlayVisible(false);
-      return showToast("Tarama destegi acilamadi. Linki yeniden yayinlayip tekrar dene.");
-    }
-
-    setScannerSurface("video");
-    barcodeDetectorInstance = new window.BarcodeDetector({
-      formats: ["ean_13", "ean_8", "code_128", "upc_a", "upc_e"]
-    });
-    scannerStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: "environment" } },
-      audio: false
-    });
-    const video = document.querySelector("#scannerVideo");
-    video.srcObject = scannerStream;
-
-    scannerInterval = setInterval(async () => {
-      if (!video.videoWidth) return;
-      try {
-        const barcodes = await barcodeDetectorInstance.detect(video);
-        if (!barcodes.length) return;
-        const rawValue = barcodes[0].rawValue?.trim();
-        if (!rawValue) return;
-        await stopBarcodeScanner();
-        applyScannedBarcode(rawValue);
-      } catch (error) {
-        console.error(error);
-      }
-    }, 500);
+    setScannerOverlayVisible(false);
+    showToast("Tarama desteği açılamadı. Linki yeniden yayınlayıp tekrar dene.");
   } catch (error) {
     console.error(error);
     await stopBarcodeScanner();
-    showToast("Kamera acilamadi. Telefonunda kamera izni ver ve tekrar dene.");
+    showToast("Kamera açılamadı. Telefonda kamera izni verip tekrar dene.");
   }
 }
 
 async function stopBarcodeScanner() {
+  scannerLocked = false;
   if (scannerInterval) {
     clearInterval(scannerInterval);
     scannerInterval = null;
@@ -517,8 +573,11 @@ function applyScannedBarcode(rawValue) {
   } else if (scannerMode === "search") {
     renderProducts();
     const product = state.products.find((item) => item.barcode === rawValue);
-    if (product) showToast(`${product.name} bulundu.`);
-    else showToast("Bu barkodla urun bulunamadi.");
+    if (product) {
+      showToast(`${product.name} bulundu.`);
+      openProductQuickEdit(product.id);
+    }
+    else showToast("Bu barkodla ürün bulunamadı.");
   } else if (scannerMode === "editor") {
     updateBarcodePreview(rawValue);
     showToast("Barkod alana eklendi.");
@@ -530,13 +589,16 @@ function refreshInlinePriceChangeState() {
   retailInputs.forEach((retailInput) => {
     const productId = retailInput.dataset.inlineRetail;
     const wholesaleInput = document.querySelector(`[data-inline-wholesale="${productId}"]`);
+    const stockInput = document.querySelector(`[data-inline-stock="${productId}"]`);
     const product = getProduct(productId);
-    if (!wholesaleInput || !product) return;
+    if (!wholesaleInput || !stockInput || !product) return;
 
     const retailChanged = Number(retailInput.value) !== Number(product.retailPrice);
     const wholesaleChanged = Number(wholesaleInput.value) !== Number(product.wholesalePrice);
+    const stockChanged = Number(stockInput.value) !== Number(product.stock);
     retailInput.closest(".price-chip")?.classList.toggle("changed", retailChanged);
     wholesaleInput.closest(".price-chip")?.classList.toggle("changed", wholesaleChanged);
+    stockInput.closest(".price-chip")?.classList.toggle("changed", stockChanged);
   });
 }
 
@@ -630,7 +692,7 @@ function generateEan13Svg(barcode) {
 function getProductLabelMarkup(product) {
   const svg = generateEan13Svg(product.barcode);
   if (!svg) {
-    return `<div class="barcode-label"><h4>${escapeHtml(product.name)}</h4><p>Yazdirma icin 12 veya 13 haneli sayisal barkod gerekir.</p></div>`;
+    return `<div class="barcode-label"><h4>${escapeHtml(product.name)}</h4><p>Yazdırma için 12 veya 13 haneli sayısal barkod gerekir.</p></div>`;
   }
 
   return `
@@ -667,7 +729,7 @@ function updateProductImagePreview(imageData) {
 
 function updateBarcodePreview(barcodeValue) {
   const preview = document.querySelector("#productBarcodePreview");
-  const productName = document.querySelector("#productName").value.trim() || "Yeni Urun";
+  const productName = document.querySelector("#productName").value.trim() || "Yeni Ürün";
   const retailPrice = Number(document.querySelector("#retailPrice").value || 0);
   const image = document.querySelector("#productImageData").value;
   const mockProduct = {
@@ -679,7 +741,7 @@ function updateBarcodePreview(barcodeValue) {
   };
   preview.innerHTML = generateEan13Svg(barcodeValue)
     ? getProductLabelMarkup(mockProduct)
-    : "12 veya 13 haneli barkod girdiginde burada etiket onizlemesi olusur.";
+    : "12 veya 13 haneli barkod girdiğinde burada etiket önizlemesi oluşur.";
 }
 
 function recalcCart() {
@@ -789,7 +851,7 @@ function renderDashboard() {
   const outOfStockCount = state.products.filter((product) => product.stock <= 0).length;
 
   const cards = [
-    { label: "Toplam Urun Cesidi", value: state.products.length },
+    { label: "Toplam Ürün Çeşidi", value: state.products.length },
     { label: "Toplam Stok", value: totalStock },
     { label: "Bugun Ciro", value: formatCurrency(dailyRevenue) },
     { label: "Stokta Yok", value: outOfStockCount }
@@ -825,18 +887,18 @@ function renderDashboard() {
           `;
         })
         .join("")
-    : `<article class="record-card"><span class="muted">Stogu biten urun yok.</span></article>`;
+    : `<article class="record-card"><span class="muted">Stoğu biten ürün yok.</span></article>`;
 
   const activities = [
     ...state.sales.map((sale) => ({
-      type: "Satis",
-      label: `${sale.mode === "wholesale" ? "Toptan" : "Perakende"} satis`,
+      type: "Satış",
+      label: `${sale.mode === "wholesale" ? "Toptan" : "Perakende"} satış`,
       amount: formatCurrency(sale.total),
       date: sale.createdAt
     })),
     ...state.inventoryMovements.map((movement) => ({
       type: "Stok",
-      label: `${movement.type === "add" ? "Stok girisi" : "Stok cikisi"} - ${movement.productName}`,
+      label: `${movement.type === "add" ? "Stok girişi" : "Stok çıkışı"} - ${movement.productName}`,
       amount: `${movement.type === "add" ? "+" : "-"}${movement.quantity}`,
       date: movement.createdAt
     }))
@@ -861,7 +923,7 @@ function renderDashboard() {
           `
         )
         .join("")
-    : `<article class="record-card"><span class="muted">Henuz hareket kaydi yok.</span></article>`;
+    : `<article class="record-card"><span class="muted">Henüz hareket kaydı yok.</span></article>`;
 }
 
 function renderProducts() {
@@ -883,24 +945,24 @@ function renderProducts() {
 
   const productSummaries = [
     {
-      label: "Toplam Urun",
+      label: "Toplam Ürün",
       value: state.products.length,
-      detail: "Kayitli urun karti"
+      detail: "Kayıtlı ürün kartı"
     },
     {
-      label: "Gorselli Urun",
+      label: "Görselli Ürün",
       value: state.products.filter((product) => Boolean(product.image)).length,
-      detail: "Resim yuklenmis kart"
+      detail: "Resim yüklenmiş kart"
     },
     {
       label: "Stokta Olan",
       value: state.products.filter((product) => product.stock > 0).length,
-      detail: "Rafinda bulunan urun"
+      detail: "Rafında bulunan ürün"
     },
     {
       label: "Stokta Yok",
       value: state.products.filter((product) => product.stock <= 0).length,
-      detail: "Tukenen urun"
+      detail: "Tükenen ürün"
     }
   ];
 
@@ -940,7 +1002,7 @@ function renderProducts() {
     selectAllCheckbox.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < filteredProducts.length;
   }
   if (selectedCountText) {
-    selectedCountText.textContent = `${selectedProductIds.size} secili`;
+    selectedCountText.textContent = `${selectedProductIds.size} seçili`;
   }
 
   tbody.innerHTML = filteredProducts.length
@@ -973,9 +1035,22 @@ function renderProducts() {
               </td>
               <td>
                 <div class="stock-cell">
-                  <div class="stock-value-line">
-                    <span>${product.stock} adet</span>
-                    <span class="status ${status.className}">${status.label}</span>
+                  <div class="catalog-price-stack stock-inline-stack">
+                    <div class="price-chip inline-edit">
+                      <small>Stok Adedi</small>
+                      <input
+                        class="inline-price-input"
+                        type="number"
+                        min="0"
+                        step="1"
+                        value="${Number(product.stock)}"
+                        data-inline-stock="${product.id}"
+                      >
+                    </div>
+                    <div class="price-chip stock-status-chip">
+                      <small>Durum</small>
+                      <span class="status ${status.className}">${status.label}</span>
+                    </div>
                   </div>
                   <div class="stock-bar ${status.className}"><span style="width:${stockRatio}%"></span></div>
                   <span class="muted">Stok kodu: ${escapeHtml(product.stockCode || generateStockCode(product.wholesalePrice))}</span>
@@ -1005,7 +1080,7 @@ function renderProducts() {
                       data-inline-wholesale="${product.id}"
                     >
                   </div>
-                  <button type="button" class="inline-save-btn" data-save-prices="${product.id}" aria-label="Fiyati kaydet" title="Fiyati kaydet">✓</button>
+                  <button type="button" class="inline-save-btn" data-save-prices="${product.id}" aria-label="Fiyatı kaydet" title="Fiyatı kaydet">✓</button>
                 </div>
               </td>
               <td>
@@ -1018,7 +1093,7 @@ function renderProducts() {
               <td>
                 <div class="inline-actions catalog-actions">
                   <button type="button" data-edit-product="${product.id}">Duzenle</button>
-                  <button type="button" data-print-barcode="${product.id}">Barkod Yazdir</button>
+                  <button type="button" data-print-barcode="${product.id}">Barkod Yazdır</button>
                   <button type="button" data-delete-product="${product.id}">Sil</button>
                 </div>
               </td>
@@ -1026,13 +1101,24 @@ function renderProducts() {
           `;
         })
         .join("")
-    : `<tr><td colspan="6" class="muted">Secili filtrelere uygun urun bulunamadi.</td></tr>`;
+    : `<tr><td colspan="6" class="muted">Seçili filtrelere uygun ürün bulunamadı.</td></tr>`;
 
   const quickList = document.querySelector("#quickProductList");
-  const quickSearchValue = document.querySelector("#productSearchInput").value.trim().toLowerCase();
-  const quickFilteredProducts = state.products.filter((product) =>
-    [product.name, product.barcode, product.category, product.brand].join(" ").toLowerCase().includes(quickSearchValue)
-  );
+  const sharedSearchValue = (
+    document.querySelector("#barcodeInput")?.value ||
+    document.querySelector("#productSearchInput")?.value ||
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  const quickFilteredProducts = sharedSearchValue
+    ? state.products.filter((product) =>
+        [product.name, product.barcode, product.stockCode, product.category, product.brand]
+          .join(" ")
+          .toLowerCase()
+          .includes(sharedSearchValue)
+      )
+    : state.products.slice(0, 12);
 
   quickList.innerHTML = quickFilteredProducts.length
     ? quickFilteredProducts
@@ -1045,14 +1131,14 @@ function renderProducts() {
               </div>
               ${product.image ? `<img class="product-thumb" src="${product.image}" alt="${escapeHtml(product.name)}">` : ""}
               <div class="record-line muted">
-                <span>${product.barcode}</span>
+                <span>${escapeHtml(product.stockCode || "-")} / ${product.barcode}</span>
                 <span>Stok: ${product.stock}</span>
               </div>
             </button>
           `
         )
         .join("")
-    : `<article class="record-card"><span class="muted">Aramana uygun urun bulunamadi.</span></article>`;
+    : `<article class="record-card"><span class="muted">Aramana uygun ürün bulunamadı.</span></article>`;
 
   const inventorySelect = document.querySelector("#inventoryProduct");
   inventorySelect.innerHTML = state.products
@@ -1100,7 +1186,7 @@ function renderCustomers() {
           <p class="muted">${customer.note || "Not yok"}</p>
           <div class="inline-actions">
             <button type="button" data-edit-customer="${customer.id}">Duzenle</button>
-            ${customer.name !== "Genel Musteri" ? `<button type="button" data-delete-customer="${customer.id}">Sil</button>` : ""}
+            ${customer.name !== "Genel Müşteri" ? `<button type="button" data-delete-customer="${customer.id}">Sil</button>` : ""}
           </div>
         </article>
       `
@@ -1131,7 +1217,7 @@ function renderCart() {
           `
         )
         .join("")
-    : `<article class="record-card"><span class="muted">Sepet bos. Barkod okutarak veya sag listeden urun secerek baslayabilirsin.</span></article>`;
+    : `<article class="record-card"><span class="muted">Sepet boş. Barkod okutarak veya sağ listeden ürün seçerek başlayabilirsin.</span></article>`;
 
   recalcCart();
 }
@@ -1154,7 +1240,7 @@ function renderInventoryMovements() {
             <article class="record-card">
               <div class="list-item-head">
                 <strong>${movement.productName}</strong>
-                <span class="status ${movement.type === "add" ? "ok" : "warn"}">${movement.type === "add" ? "Giris" : "Cikis"}</span>
+                <span class="status ${movement.type === "add" ? "ok" : "warn"}">${movement.type === "add" ? "Giriş" : "Çıkış"}</span>
               </div>
               <div class="record-line muted">
                 <span>Miktar: ${movement.quantity}</span>
@@ -1165,7 +1251,7 @@ function renderInventoryMovements() {
           `
         )
         .join("")
-    : `<article class="record-card"><span class="muted">Henuz stok hareketi kaydi yok.</span></article>`;
+    : `<article class="record-card"><span class="muted">Henüz stok hareketi kaydı yok.</span></article>`;
 }
 
 function renderReports() {
@@ -1175,11 +1261,11 @@ function renderReports() {
   const totalDiscount = state.sales.reduce((sum, sale) => sum + sale.discount, 0);
 
   const summaryCards = [
-    { label: "Toplam Satis", value: state.sales.length },
+    { label: "Toplam Satış", value: state.sales.length },
     { label: "Toplam Ciro", value: formatCurrency(totalRevenue) },
     { label: "Perakende Ciro", value: formatCurrency(totalRetail) },
     { label: "Toptan Ciro", value: formatCurrency(totalWholesale) },
-    { label: "Toplam Indirim", value: formatCurrency(totalDiscount) }
+    { label: "Toplam İndirim", value: formatCurrency(totalDiscount) }
   ];
 
   document.querySelector("#salesSummaryCards").innerHTML = summaryCards
@@ -1215,7 +1301,7 @@ function renderReports() {
           `
         )
         .join("")
-    : `<article class="record-card"><span class="muted">Rapor icin henuz satis kaydi yok.</span></article>`;
+    : `<article class="record-card"><span class="muted">Rapor için henüz satış kaydı yok.</span></article>`;
 
   document.querySelector("#salesHistoryList").innerHTML = state.sales.length
     ? [...state.sales]
@@ -1225,7 +1311,7 @@ function renderReports() {
           (sale) => `
             <article class="record-card">
               <div class="list-item-head">
-                <strong>${sale.mode === "wholesale" ? "Toptan" : "Perakende"} satis</strong>
+                <strong>${sale.mode === "wholesale" ? "Toptan" : "Perakende"} satış</strong>
                 <span>${formatCurrency(sale.total)}</span>
               </div>
               <div class="record-line muted">
@@ -1237,7 +1323,7 @@ function renderReports() {
           `
         )
         .join("")
-    : `<article class="record-card"><span class="muted">Henuz satis gecmisi yok.</span></article>`;
+    : `<article class="record-card"><span class="muted">Henüz satış geçmişi yok.</span></article>`;
 }
 
 function renderSettings() {
@@ -1355,7 +1441,7 @@ async function completeSaleRemote(sale) {
 
   const saleItems = sale.items.map((item) => ({
     sale_id: saleRow.id,
-    product_id: item.productId,
+    product_id: item.customItem ? null : item.productId,
     name: item.name,
     barcode: item.barcode,
     quantity: item.quantity,
@@ -1367,6 +1453,7 @@ async function completeSaleRemote(sale) {
   if (itemsError) throw itemsError;
 
   for (const item of sale.items) {
+    if (item.customItem) continue;
     const product = getProduct(item.productId);
     if (!product) continue;
     const { error: productError } = await supabaseClient
@@ -1439,8 +1526,8 @@ function applyQuickPaidValue(action) {
 
 function addProductToCart(productId) {
   const product = getProduct(productId);
-  if (!product) return showToast("Urun bulunamadi.");
-  if (product.stock <= 0) return showToast("Bu urunun stogu bitmis.");
+  if (!product) return showToast("Ürün bulunamadı.");
+  if (product.stock <= 0) return showToast("Bu ürünün stoğu bitmiş.");
 
   const mode = document.querySelector("#saleMode").value;
   const price = mode === "wholesale" ? Number(product.wholesalePrice) : Number(product.retailPrice);
@@ -1458,6 +1545,7 @@ function addProductToCart(productId) {
     existing.quantity += 1;
   } else {
     state.cart.push({
+      cartKey: `${product.id}:${mode}`,
       productId: product.id,
       name: product.name,
       barcode: product.barcode,
@@ -1470,6 +1558,32 @@ function addProductToCart(productId) {
   renderCart();
   saveState();
   showToast(`${product.name} sepete eklendi.`);
+}
+
+function addCustomSaleItem(name, price, quantity) {
+  const trimmedName = String(name || "").trim();
+  const numericPrice = Number(price);
+  const numericQuantity = Number(quantity);
+
+  if (!trimmedName) return showToast("Muhtelif ürün adı gir.");
+  if (!Number.isFinite(numericPrice) || numericPrice <= 0) return showToast("Muhtelif ürün için geçerli fiyat gir.");
+  if (!Number.isFinite(numericQuantity) || numericQuantity <= 0) return showToast("Muhtelif ürün için adet gir.");
+
+  const mode = document.querySelector("#saleMode").value;
+  state.cart.push({
+    cartKey: crypto.randomUUID(),
+    productId: null,
+    name: trimmedName,
+    barcode: "MUHTELİF",
+    quantity: numericQuantity,
+    price: numericPrice,
+    mode,
+    customItem: true
+  });
+
+  renderCart();
+  saveState();
+  showToast(`${trimmedName} sepete eklendi.`);
 }
 
 async function handleProductSubmit(event) {
@@ -1493,21 +1607,21 @@ async function handleProductSubmit(event) {
   };
 
   const duplicate = state.products.find((product) => product.barcode === payload.barcode && product.id !== payload.id);
-  if (duplicate) return showToast("Bu barkod zaten baska bir urunde kayitli.");
+  if (duplicate) return showToast("Bu barkod zaten başka bir üründe kayıtlı.");
 
   const existingIndex = state.products.findIndex((product) => product.id === payload.id);
   try {
     await persistProductRemote(payload);
     if (existingIndex >= 0) {
       state.products[existingIndex] = payload;
-      showToast("Urun guncellendi.");
+      showToast("Ürün güncellendi.");
     } else {
       state.products.unshift(payload);
-      showToast("Urun kaydedildi.");
+      showToast("Ürün kaydedildi.");
     }
   } catch (error) {
     console.error(error);
-    return showToast("Urun kaydedilemedi.");
+    return showToast("Ürün kaydedilemedi.");
   }
 
   resetProductForm();
@@ -1532,14 +1646,14 @@ async function handleCustomerSubmit(event) {
     await persistCustomerRemote(payload);
     if (index >= 0) {
       state.customers[index] = payload;
-      showToast("Musteri guncellendi.");
+      showToast("Müşteri güncellendi.");
     } else {
       state.customers.push(payload);
-      showToast("Musteri eklendi.");
+      showToast("Müşteri eklendi.");
     }
   } catch (error) {
     console.error(error);
-    return showToast("Musteri kaydedilemedi.");
+    return showToast("Müşteri kaydedilemedi.");
   }
 
   resetCustomerForm();
@@ -1549,10 +1663,10 @@ async function handleCustomerSubmit(event) {
 function handleSaleForm(event) {
   event.preventDefault();
   const barcode = document.querySelector("#barcodeInput").value.trim();
-  if (!barcode) return showToast("Barkod alani bos.");
+  if (!barcode) return showToast("Barkod alanı boş.");
 
   const product = state.products.find((item) => item.barcode === barcode);
-  if (!product) return showToast("Bu barkoda ait urun bulunamadi.");
+  if (!product) return showToast("Bu barkoda ait ürün bulunamadı.");
 
   addProductToCart(product.id);
   document.querySelector("#barcodeInput").value = "";
@@ -1561,9 +1675,9 @@ function handleSaleForm(event) {
 
 function handlePriceCheck() {
   const barcode = document.querySelector("#barcodeInput").value.trim();
-  if (!barcode) return showToast("Fiyat gormek icin barkod gir.");
+  if (!barcode) return showToast("Fiyat görmek için barkod gir.");
   const product = state.products.find((item) => item.barcode === barcode);
-  if (!product) return showToast("Bu barkoda ait urun bulunamadi.");
+  if (!product) return showToast("Bu barkoda ait ürün bulunamadı.");
   const mode = document.querySelector("#saleMode").value;
   const price = mode === "wholesale" ? product.wholesalePrice : product.retailPrice;
   showToast(`${product.name}: ${formatCurrency(price)}`);
@@ -1584,6 +1698,7 @@ async function handleCompleteSale(event) {
   const mode = document.querySelector("#saleMode").value;
 
   for (const item of state.cart) {
+    if (item.customItem) continue;
     const product = getProduct(item.productId);
     if (!product || product.stock < item.quantity) {
       return showToast(`${item.name} icin yeterli stok yok.`);
@@ -1591,6 +1706,7 @@ async function handleCompleteSale(event) {
   }
 
   state.cart.forEach((item) => {
+    if (item.customItem) return;
     const product = getProduct(item.productId);
     product.stock -= item.quantity;
   });
@@ -1614,7 +1730,7 @@ async function handleCompleteSale(event) {
     await completeSaleRemote(saleRecord);
   } catch (error) {
     console.error(error);
-    return showToast("Satis buluta kaydedilemedi.");
+    return showToast("Satış buluta kaydedilemedi.");
   }
 
   state.sales.unshift(saleRecord);
@@ -1626,7 +1742,7 @@ async function handleCompleteSale(event) {
   document.querySelector("#paymentMethod").value = "Nakit";
   renderAll();
   updatePaymentMethodButtons();
-  showToast("Satis basariyla tamamlandi.");
+  showToast("Satış başarıyla tamamlandı.");
 }
 
 async function handleInventorySubmit(event) {
@@ -1638,8 +1754,8 @@ async function handleInventorySubmit(event) {
   const reason = formData.get("reason").trim();
   const product = getProduct(productId);
 
-  if (!product) return showToast("Urun secimi gecersiz.");
-  if (type === "remove" && product.stock < quantity) return showToast("Stok cikisi icin yeterli adet yok.");
+  if (!product) return showToast("Ürün seçimi geçersiz.");
+  if (type === "remove" && product.stock < quantity) return showToast("Stok çıkışı için yeterli adet yok.");
 
   product.stock += type === "add" ? quantity : -quantity;
   const movement = {
@@ -1690,18 +1806,18 @@ async function handleSettingsSubmit(event) {
 async function handleSeedDemo() {
   state = {
     settings: {
-      storeName: "Renkli Dukkan Oyuncak",
+      storeName: "Renkli Dükkan Oyuncak",
       storeOwner: "Burhan",
-      storeAddress: "Istanbul",
+      storeAddress: "İstanbul",
       storePhone: "0555 000 00 00",
       storeCurrency: "TRY"
     },
     products: [
       {
         id: crypto.randomUUID(),
-        name: "Uzaktan Kumandali Araba",
+        name: "Uzaktan Kumandalı Araba",
         barcode: "869100100001",
-        category: "Araclar",
+        category: "Araçlar",
         brand: "Turbo Kids",
         retailPrice: 799.9,
         wholesalePrice: 620,
@@ -1711,9 +1827,9 @@ async function handleSeedDemo() {
       },
       {
         id: crypto.randomUUID(),
-        name: "Yapboz 100 Parca",
+        name: "Yapboz 100 Parça",
         barcode: "869100100002",
-        category: "Egitici Oyuncak",
+        category: "Eğitici Oyuncak",
         brand: "Zeka Kutusu",
         retailPrice: 149.9,
         wholesalePrice: 100,
@@ -1723,9 +1839,9 @@ async function handleSeedDemo() {
       },
       {
         id: crypto.randomUUID(),
-        name: "Pelus Ayi",
+        name: "Peluş Ayı",
         barcode: "869100100003",
-        category: "Pelus",
+        category: "Peluş",
         brand: "SoftWorld",
         retailPrice: 299.9,
         wholesalePrice: 210,
@@ -1737,7 +1853,7 @@ async function handleSeedDemo() {
     customers: [
       {
         id: crypto.randomUUID(),
-        name: "Genel Musteri",
+        name: "Genel Müşteri",
         type: "Perakende",
         phone: "",
         balance: 0,
@@ -1746,10 +1862,10 @@ async function handleSeedDemo() {
       {
         id: crypto.randomUUID(),
         name: "Minikler Toptan",
-        type: "Toptanci",
+        type: "Toptancı",
         phone: "0532 111 22 33",
         balance: 0,
-        note: "Duzenli bayi musterisi"
+        note: "Düzenli bayi müşterisi"
       }
     ],
     sales: [],
@@ -1764,10 +1880,10 @@ async function handleSeedDemo() {
       for (const product of state.products) await persistProductRemote(product);
     }
     renderAll();
-    showToast("Demo verileri yuklendi.");
+    showToast("Demo verileri yüklendi.");
   } catch (error) {
     console.error(error);
-    showToast("Demo verileri buluta yazilamadi.");
+    showToast("Demo verileri buluta yazılamadı.");
   }
 }
 
@@ -1779,7 +1895,7 @@ function exportData() {
   link.download = `oyuncakpos-yedek-${new Date().toISOString().slice(0, 10)}.json`;
   link.click();
   URL.revokeObjectURL(url);
-  showToast("Yedek dosyasi indirildi.");
+  showToast("Yedek dosyası indirildi.");
 }
 
 function importData(event) {
@@ -1795,10 +1911,10 @@ function importData(event) {
         settings: { ...defaultState.settings, ...(parsed.settings || {}) }
       };
       renderAll();
-      showToast("Yedek dosyasi geri yuklendi.");
+      showToast("Yedek dosyası geri yüklendi.");
     } catch (error) {
       console.error(error);
-      showToast("Dosya okunamadi.");
+      showToast("Dosya okunamadı.");
     }
   };
   reader.readAsText(file);
@@ -1807,15 +1923,15 @@ function importData(event) {
 
 function printBarcodeLabel(productId) {
   const product = getProduct(productId);
-  if (!product) return showToast("Urun bulunamadi.");
+  if (!product) return showToast("Ürün bulunamadı.");
 
   const labelMarkup = getProductLabelMarkup(product);
   if (!generateEan13Svg(product.barcode)) {
-    return showToast("Barkod yazdirma icin 12 veya 13 haneli sayisal barkod gerekli.");
+    return showToast("Barkod yazdırma için 12 veya 13 haneli sayısal barkod gerekli.");
   }
 
   const printWindow = window.open("", "_blank", "width=480,height=640");
-  if (!printWindow) return showToast("Yazdirma penceresi acilamadi.");
+  if (!printWindow) return showToast("Yazdırma penceresi açılamadı.");
 
   printWindow.document.write(`
     <!DOCTYPE html>
@@ -1858,13 +1974,13 @@ function printBarcodeLabel(productId) {
 function printMultipleBarcodeLabels(products) {
   const printableProducts = products.filter((product) => generateEan13Svg(product.barcode));
   if (!printableProducts.length) {
-    showToast("Yazdirilabilir barkod bulunamadi.");
+    showToast("Yazdırılabilir barkod bulunamadı.");
     return;
   }
 
   const labelsMarkup = printableProducts.map((product) => `<div class="sheet">${getProductLabelMarkup(product)}</div>`).join("");
   const printWindow = window.open("", "_blank", "width=900,height=700");
-  if (!printWindow) return showToast("Yazdirma penceresi acilamadi.");
+  if (!printWindow) return showToast("Yazdırma penceresi açılamadı.");
 
   printWindow.document.write(`
     <!DOCTYPE html>
@@ -1905,7 +2021,7 @@ function printMultipleBarcodeLabels(products) {
 
 async function handleBulkDeleteProducts() {
   const selected = getSelectedProducts();
-  if (!selected.length) return showToast("Toplu silme icin urun sec.");
+  if (!selected.length) return showToast("Toplu silme için ürün seç.");
 
   const selectedIds = new Set(selected.map((product) => product.id));
   try {
@@ -1914,18 +2030,18 @@ async function handleBulkDeleteProducts() {
     }
   } catch (error) {
     console.error(error);
-    return showToast("Toplu silme sirasinda hata oldu.");
+    return showToast("Toplu silme sırasında hata oldu.");
   }
   state.products = state.products.filter((product) => !selectedIds.has(product.id));
   state.cart = state.cart.filter((item) => !selectedIds.has(item.productId));
   selectedProductIds.clear();
   renderAll();
-  showToast(`${selected.length} urun silindi.`);
+  showToast(`${selected.length} ürün silindi.`);
 }
 
 function handleBulkPrintBarcodes() {
   const selected = getSelectedProducts();
-  if (!selected.length) return showToast("Barkod cikarmak icin urun sec.");
+  if (!selected.length) return showToast("Barkod çıkarmak için ürün seç.");
   printMultipleBarcodeLabels(selected);
 }
 
@@ -1969,12 +2085,12 @@ async function handleDocumentClick(event) {
       await deleteProductRemote(deleteProductId);
     } catch (error) {
       console.error(error);
-      return showToast("Urun silinemedi.");
+      return showToast("Ürün silinemedi.");
     }
     state.products = state.products.filter((product) => product.id !== deleteProductId);
     state.cart = state.cart.filter((item) => item.productId !== deleteProductId);
     renderAll();
-    showToast("Urun silindi.");
+    showToast("Ürün silindi.");
   }
 
   if (printBarcodeId) {
@@ -1984,8 +2100,9 @@ async function handleDocumentClick(event) {
   if (savePricesId) {
     const retailInput = document.querySelector(`[data-inline-retail="${savePricesId}"]`);
     const wholesaleInput = document.querySelector(`[data-inline-wholesale="${savePricesId}"]`);
-    if (!retailInput || !wholesaleInput) return;
-    await updateProductPrices(savePricesId, retailInput.value, wholesaleInput.value);
+    const stockInput = document.querySelector(`[data-inline-stock="${savePricesId}"]`);
+    if (!retailInput || !wholesaleInput || !stockInput) return;
+    await updateProductValues(savePricesId, retailInput.value, wholesaleInput.value, stockInput.value);
   }
 
   if (quickPaidValue) {
@@ -1995,13 +2112,13 @@ async function handleDocumentClick(event) {
   if (paymentMethodValue) {
     document.querySelector("#paymentMethod").value = paymentMethodValue;
     updatePaymentMethodButtons();
-    showToast(`Odeme tipi: ${paymentMethodValue}`);
+    showToast(`Ödeme tipi: ${paymentMethodValue}`);
   }
 
   if (saleCustomerId) {
     document.querySelector("#saleCustomer").value = saleCustomerId;
     renderCustomers();
-    showToast("Musteri secildi.");
+    showToast("Müşteri seçildi.");
   }
 
   if (selectProductId) {
@@ -2020,10 +2137,10 @@ async function handleDocumentClick(event) {
   if (addCartId) addProductToCart(addCartId);
 
   if (removeCartId) {
-    state.cart = state.cart.filter((item) => item.productId !== removeCartId);
+    state.cart = state.cart.filter((item) => (item.cartKey || item.productId) !== removeCartId);
     renderCart();
     saveState();
-    showToast("Urun sepetten kaldirildi.");
+    showToast("Ürün sepetten kaldırıldı.");
   }
 
   if (editCustomerId) {
@@ -2043,11 +2160,11 @@ async function handleDocumentClick(event) {
       await deleteCustomerRemote(deleteCustomerId);
     } catch (error) {
       console.error(error);
-      return showToast("Musteri silinemedi.");
+      return showToast("Müşteri silinemedi.");
     }
     state.customers = state.customers.filter((customer) => customer.id !== deleteCustomerId);
     renderAll();
-    showToast("Musteri silindi.");
+    showToast("Müşteri silindi.");
   }
 }
 
@@ -2082,14 +2199,14 @@ function handleProductImageChange(event) {
     document.querySelector("#productImageData").value = imageData;
     updateProductImagePreview(imageData);
     updateBarcodePreview(document.querySelector("#productBarcode").value);
-    showToast("Urun resmi yuklendi.");
+    showToast("Ürün resmi yüklendi.");
   };
   reader.readAsDataURL(file);
 }
 
 async function handleAuthSubmit(event) {
   event.preventDefault();
-  if (!supabaseClient) return showToast("Bulut baglantisi hazir degil.");
+  if (!supabaseClient) return showToast("Bulut bağlantısı hazır değil.");
 
   const email = document.querySelector("#authEmail").value.trim();
   const password = document.querySelector("#authPassword").value;
@@ -2097,7 +2214,7 @@ async function handleAuthSubmit(event) {
   const authMessage = document.querySelector("#authMessage");
 
   submitButton.disabled = true;
-  authMessage.textContent = "Giris yapiliyor...";
+  authMessage.textContent = "Giriş yapılıyor...";
 
   const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
   submitButton.disabled = false;
@@ -2113,7 +2230,7 @@ async function handleAuthSubmit(event) {
 async function handleLogout() {
   if (!supabaseClient) return;
   await supabaseClient.auth.signOut();
-  showToast("Cikis yapildi.");
+  showToast("Çıkış yapıldı.");
 }
 
 async function handleDocumentKeydown(event) {
@@ -2128,13 +2245,14 @@ async function handleDocumentKeydown(event) {
   event.preventDefault();
   const retailInput = document.querySelector(`[data-inline-retail="${productId}"]`);
   const wholesaleInput = document.querySelector(`[data-inline-wholesale="${productId}"]`);
-  if (!retailInput || !wholesaleInput) return;
-  await updateProductPrices(productId, retailInput.value, wholesaleInput.value);
+  const stockInput = document.querySelector(`[data-inline-stock="${productId}"]`);
+  if (!retailInput || !wholesaleInput || !stockInput) return;
+  await updateProductValues(productId, retailInput.value, wholesaleInput.value, stockInput.value);
 }
 
 function handleDocumentInput(event) {
   if (!(event.target instanceof HTMLInputElement)) return;
-  if (!event.target.dataset.inlineRetail && !event.target.dataset.inlineWholesale) return;
+  if (!event.target.dataset.inlineRetail && !event.target.dataset.inlineWholesale && !event.target.dataset.inlineStock) return;
   refreshInlinePriceChangeState();
 }
 
@@ -2162,6 +2280,7 @@ function bindEvents() {
   document.querySelector("#productForm").addEventListener("submit", handleProductSubmit);
   document.querySelector("#customerForm").addEventListener("submit", handleCustomerSubmit);
   document.querySelector("#authForm").addEventListener("submit", handleAuthSubmit);
+  document.querySelector("#productQuickEditForm").addEventListener("submit", saveQuickEditProduct);
   document.querySelector("#saleForm").addEventListener("submit", handleSaleForm);
   document.querySelector("#priceCheckBtn").addEventListener("click", handlePriceCheck);
   document.querySelector("#completeSaleForm").addEventListener("submit", handleCompleteSale);
@@ -2169,6 +2288,7 @@ function bindEvents() {
   document.querySelector("#settingsForm").addEventListener("submit", handleSettingsSubmit);
   document.querySelector("#logoutBtn").addEventListener("click", handleLogout);
   document.querySelector("#closeScannerBtn").addEventListener("click", stopBarcodeScanner);
+  document.querySelector("#closeProductQuickEditBtn").addEventListener("click", () => setProductQuickEditVisible(false));
   document.querySelector("#saleCustomer").addEventListener("change", renderCustomers);
   document.querySelector("#openProductEditorBtn").addEventListener("click", () => {
     resetProductForm();
@@ -2213,7 +2333,7 @@ function bindEvents() {
     document.querySelector("#productImageFile").value = "";
     updateProductImagePreview("");
     updateBarcodePreview(document.querySelector("#productBarcode").value);
-    showToast("Urun resmi kaldirildi.");
+    showToast("Ürün resmi kaldırıldı.");
   });
   document.querySelector("#clearCartBtn").addEventListener("click", () => {
     state.cart = [];
@@ -2225,12 +2345,249 @@ function bindEvents() {
   document.querySelector("#resetProductBtn").addEventListener("click", resetProductForm);
   document.querySelector("#resetCustomerBtn").addEventListener("click", resetCustomerForm);
   document.addEventListener("click", handleDocumentClick);
+  document.addEventListener("change", handleCartInlineChange);
   document.addEventListener("keydown", handleDocumentKeydown);
   document.addEventListener("input", handleDocumentInput);
 }
 
+function enhanceSalesLayout() {
+  const workspace = document.querySelector(".sales-workspace");
+  const grid = document.querySelector(".sales-grid");
+  const customerStrip = document.querySelector(".sales-customer-strip");
+  const cartPanel = document.querySelector(".sales-cart-panel");
+  const paymentPanel = document.querySelector(".sales-payment-panel");
+  const productsPanel = document.querySelector(".sales-products-panel");
+  const productSearchField = productsPanel?.querySelector(".field");
+  const productPanelChip = productsPanel?.querySelector(".chip");
+  const productPanelTitle = productsPanel?.querySelector("h3");
+  const barcodeInput = document.querySelector("#barcodeInput");
+  const saleFormButton = document.querySelector('#saleForm button[type="submit"]');
+  const priceButton = document.querySelector("#priceCheckBtn");
+  const scanButton = document.querySelector('#saleForm [data-scan-target="barcodeInput"]');
+
+  if (!workspace || !grid || !customerStrip || !cartPanel || !paymentPanel || !productsPanel) return;
+
+  workspace.classList.add("sales-pos-shell");
+  grid.classList.add("sales-grid-pos");
+
+  let leftColumn = grid.querySelector(".sales-left-column");
+  if (!leftColumn) {
+    leftColumn = document.createElement("div");
+    leftColumn.className = "sales-left-column";
+    grid.insertBefore(leftColumn, paymentPanel);
+  }
+
+  leftColumn.appendChild(customerStrip);
+  leftColumn.appendChild(cartPanel);
+  leftColumn.appendChild(productsPanel);
+
+  cartPanel.classList.add("sales-cart-panel-pos");
+  paymentPanel.classList.add("sales-payment-panel-pos");
+  productsPanel.classList.add("inline-products-panel");
+
+  if (productSearchField) productSearchField.style.display = "none";
+  if (productPanelChip) productPanelChip.style.display = "none";
+  if (productPanelTitle) productPanelTitle.textContent = "Arama Sonuçları";
+  if (barcodeInput) barcodeInput.placeholder = "Ürün adı, stok kodu veya barkod yaz";
+  if (saleFormButton) saleFormButton.textContent = "Ekle";
+  if (priceButton) priceButton.textContent = "Fiyat Gör";
+  if (scanButton) scanButton.textContent = "Okut";
+
+  if (!document.querySelector("#customSaleForm")) {
+    const customPanel = document.createElement("div");
+    customPanel.className = "sales-custom-panel";
+    customPanel.innerHTML = `
+      <div class="sales-section-head">
+        <h3>Muhtelif Ürün</h3>
+        <span class="muted">Ad, fiyat ve adet ile ekle</span>
+      </div>
+      <form id="customSaleForm" class="sales-custom-form">
+        <input id="customSaleName" type="text" placeholder="Muhtelif ürün adı">
+        <input id="customSalePrice" type="number" min="0" step="0.01" placeholder="Fiyat">
+        <input id="customSaleQuantity" type="number" min="1" step="1" value="1" placeholder="Adet">
+        <button type="submit" class="primary-btn">Muhtelif Ekle</button>
+      </form>
+    `;
+    customerStrip.insertAdjacentElement("afterend", customPanel);
+
+    customPanel.querySelector("#customSaleForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      addCustomSaleItem(
+        customPanel.querySelector("#customSaleName").value,
+        customPanel.querySelector("#customSalePrice").value,
+        customPanel.querySelector("#customSaleQuantity").value
+      );
+      customPanel.querySelector("#customSaleForm").reset();
+      customPanel.querySelector("#customSaleQuantity").value = 1;
+    });
+  }
+}
+
+function initSalesSearchBehavior() {
+  const barcodeInput = document.querySelector("#barcodeInput");
+  if (!barcodeInput) return;
+
+  barcodeInput.addEventListener("input", () => {
+    const sideSearch = document.querySelector("#productSearchInput");
+    if (sideSearch) sideSearch.value = barcodeInput.value;
+    renderProducts();
+  });
+}
+
+function renderCart() {
+  const cartItems = document.querySelector("#cartItems");
+  const itemCount = document.querySelector("#salesItemCount");
+  if (!cartItems) return;
+
+  state.cart.forEach((item) => {
+    if (!item.cartKey) {
+      item.cartKey = item.productId ? `${item.productId}:${item.mode}` : crypto.randomUUID();
+    }
+  });
+
+  if (itemCount) {
+    itemCount.textContent = `${state.cart.reduce((sum, item) => sum + item.quantity, 0)} ürün`;
+  }
+
+  cartItems.innerHTML = state.cart.length
+    ? `
+        <div class="sales-cart-table-head">
+          <span>Ürün</span>
+          <span>Miktar</span>
+          <span>Fiyat</span>
+          <span>Tutar</span>
+          <span>Stok</span>
+          <span>İşlem</span>
+        </div>
+        <div class="sales-cart-table-body">
+          ${state.cart
+            .map(
+              (item) => `
+                <div class="sales-cart-row">
+                  <div class="sales-cart-product">
+                    <strong>${item.name}</strong>
+                    <span class="muted">${item.mode === "wholesale" ? "Toptan" : "Perakende"} / ${item.barcode}</span>
+                  </div>
+                  <input class="cart-inline-input" type="number" min="1" step="1" value="${Number(item.quantity)}" data-cart-qty="${item.cartKey}">
+                  <input class="cart-inline-input" type="number" min="0" step="0.01" value="${Number(item.price)}" data-cart-price="${item.cartKey}">
+                  <strong>${formatCurrency(item.price * item.quantity)}</strong>
+                  ${item.productId ? `<input class="cart-inline-input stock-inline-input" type="number" min="0" step="1" value="${Number(getProduct(item.productId)?.stock || 0)}" data-cart-stock="${item.productId}">` : ""}
+                  <button type="button" class="ghost-btn sales-remove-btn" data-remove-cart="${item.cartKey || item.productId}">Sil</button>
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+      `
+    : `<article class="record-card"><span class="muted">Sepet boş. Barkod okutarak veya arama alanından ürün seçerek başlayabilirsin.</span></article>`;
+
+  recalcCart();
+}
+
+function handleSaleForm(event) {
+  event.preventDefault();
+  const query = document.querySelector("#barcodeInput").value.trim();
+  if (!query) return showToast("Ürün adı, barkod veya stok kodu gir.");
+
+  const exactProduct = state.products.find((item) => item.barcode === query || item.stockCode === query);
+  if (exactProduct) {
+    addProductToCart(exactProduct.id);
+    document.querySelector("#barcodeInput").value = "";
+    renderProducts();
+    document.querySelector("#barcodeInput").focus();
+    return;
+  }
+
+  const matches = findProductsForSaleQuery(query);
+  if (!matches.length) {
+    showToast("Aramana uygun ürün bulunamadı.");
+    return;
+  }
+
+  if (matches.length === 1) {
+    addProductToCart(matches[0].id);
+    document.querySelector("#barcodeInput").value = "";
+    renderProducts();
+    document.querySelector("#barcodeInput").focus();
+    return;
+  }
+
+  renderProducts();
+  showToast("Birden fazla ürün bulundu, alttaki sonuçlardan seç.");
+}
+
+function handlePriceCheck() {
+  const query = document.querySelector("#barcodeInput").value.trim();
+  if (!query) return showToast("Fiyat görmek için ürün adı, barkod veya stok kodu gir.");
+
+  const exactProduct = state.products.find((item) => item.barcode === query || item.stockCode === query);
+  const matches = exactProduct ? [exactProduct] : findProductsForSaleQuery(query);
+  if (!matches.length) return showToast("Aramana uygun ürün bulunamadı.");
+
+  const product = matches[0];
+  const mode = document.querySelector("#saleMode").value;
+  const price = mode === "wholesale" ? product.wholesalePrice : product.retailPrice;
+  showToast(`${product.name}: ${formatCurrency(price)}`);
+}
+
+async function saveQuickEditProduct(event) {
+  event.preventDefault();
+  const productId = document.querySelector("#productQuickEditId").value;
+  const retail = document.querySelector("#productQuickEditRetail").value;
+  const wholesale = document.querySelector("#productQuickEditWholesale").value;
+  const stock = document.querySelector("#productQuickEditStock").value;
+  const saved = await updateProductValues(productId, retail, wholesale, stock);
+  if (saved) {
+    setProductQuickEditVisible(false);
+  }
+}
+
+function handleCartInlineChange(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+
+  if (target.dataset.cartQty || target.dataset.cartPrice) {
+    const cartKey = target.dataset.cartQty || target.dataset.cartPrice;
+    const item = state.cart.find((entry) => entry.cartKey === cartKey);
+    if (!item) return;
+
+    const qtyInput = document.querySelector(`[data-cart-qty="${cartKey}"]`);
+    const priceInput = document.querySelector(`[data-cart-price="${cartKey}"]`);
+    const quantity = Number(qtyInput?.value || item.quantity);
+    const price = Number(priceInput?.value || item.price);
+
+    if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(price) || price < 0) {
+      showToast("Sepette geçerli miktar ve fiyat gir.");
+      renderCart();
+      return;
+    }
+
+    item.quantity = quantity;
+    item.price = price;
+    saveState();
+    renderCart();
+    return;
+  }
+
+  if (target.dataset.cartStock) {
+    const product = getProduct(target.dataset.cartStock);
+    const stock = Number(target.value);
+    if (!product || !Number.isFinite(stock) || stock < 0) {
+      showToast("Geçerli stok adedi gir.");
+      renderCart();
+      return;
+    }
+    product.stock = stock;
+    persistProductRemote(product).catch((error) => console.error(error));
+    saveState();
+    renderAll();
+  }
+}
+
 async function init() {
   bindEvents();
+  enhanceSalesLayout();
+  initSalesSearchBehavior();
   initClock();
   renderAll();
   setView(loadActiveView());
