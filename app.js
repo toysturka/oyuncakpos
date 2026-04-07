@@ -12,6 +12,12 @@ let scannerMode = null;
 let barcodeDetectorInstance = null;
 let html5QrCodeInstance = null;
 let scannerLocked = false;
+let scannerFrameRequest = null;
+let quaggaActive = false;
+
+function isLikelyMobileDevice() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+}
 
 const defaultState = {
   settings: {
@@ -19,7 +25,10 @@ const defaultState = {
     storeOwner: "",
     storeAddress: "",
     storePhone: "",
-    storeCurrency: "TRY"
+    storeCurrency: "TRY",
+    panelTitle: "OyuncakPOS",
+    accentColor: "orange",
+    density: "comfortable"
   },
   products: [],
   customers: [
@@ -97,6 +106,30 @@ function updateConnectionBadge(label, isOnline = false) {
   if (logoutButton) logoutButton.hidden = !isOnline;
 }
 
+function applyCustomizationSettings() {
+  const root = document.documentElement;
+  const title = state.settings.panelTitle?.trim() || "OyuncakPOS";
+  const accentColor = state.settings.accentColor || "orange";
+  const density = state.settings.density || "comfortable";
+
+  const accentMap = {
+    orange: { accent: "#ef6c33", accentDark: "#c4501f", accentSoft: "rgba(239, 108, 51, 0.12)" },
+    blue: { accent: "#1677ff", accentDark: "#0b57c6", accentSoft: "rgba(22, 119, 255, 0.12)" },
+    green: { accent: "#1f9d75", accentDark: "#11785a", accentSoft: "rgba(31, 157, 117, 0.12)" },
+    red: { accent: "#d94841", accentDark: "#b52d28", accentSoft: "rgba(217, 72, 65, 0.12)" }
+  };
+
+  const selectedAccent = accentMap[accentColor] || accentMap.orange;
+  root.style.setProperty("--accent", selectedAccent.accent);
+  root.style.setProperty("--accent-dark", selectedAccent.accentDark);
+  root.style.setProperty("--accent-soft", selectedAccent.accentSoft);
+  document.body.classList.toggle("compact-density", density === "compact");
+
+  document.querySelectorAll(".brand h1").forEach((node) => {
+    node.textContent = title;
+  });
+}
+
 function setAuthOverlayVisible(visible, message = "") {
   const overlay = document.querySelector("#authOverlay");
   const authMessage = document.querySelector("#authMessage");
@@ -150,6 +183,162 @@ function setScannerSurface(mode) {
 
   reader.classList.add("hidden-overlay");
   video.classList.remove("hidden-overlay");
+}
+
+async function optimizeScannerTrack(track) {
+  if (!track?.getCapabilities || !track?.applyConstraints) return;
+
+  try {
+    const capabilities = track.getCapabilities();
+    const advanced = [];
+
+    if (Array.isArray(capabilities.focusMode)) {
+      if (capabilities.focusMode.includes("continuous")) {
+        advanced.push({ focusMode: "continuous" });
+      } else if (capabilities.focusMode.includes("single-shot")) {
+        advanced.push({ focusMode: "single-shot" });
+      }
+    }
+
+    if (typeof capabilities.zoom?.max === "number" && capabilities.zoom.max >= 1.5) {
+      advanced.push({ zoom: Math.min(capabilities.zoom.max, 1.8) });
+    }
+
+    if (typeof capabilities.sharpness?.max === "number") {
+      advanced.push({ sharpness: capabilities.sharpness.max });
+    }
+
+    if (advanced.length) {
+      await track.applyConstraints({ advanced });
+    }
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function runNativeBarcodeLoop(video) {
+  const detectFrame = async () => {
+    if (!video?.videoWidth || scannerLocked || !barcodeDetectorInstance) {
+      scannerFrameRequest = requestAnimationFrame(detectFrame);
+      return;
+    }
+
+    try {
+      const barcodes = await barcodeDetectorInstance.detect(video);
+      if (barcodes.length) {
+        const rawValue = barcodes[0].rawValue?.trim();
+        if (rawValue) {
+          scannerLocked = true;
+          applyScannedBarcode(rawValue);
+          if (navigator.vibrate) navigator.vibrate(60);
+          void stopBarcodeScanner();
+          return;
+        }
+      }
+    } catch (error) {
+      console.error(error);
+    }
+
+    scannerFrameRequest = requestAnimationFrame(detectFrame);
+  };
+
+  scannerFrameRequest = requestAnimationFrame(detectFrame);
+}
+
+async function getPreferredCameraConfig() {
+  if (isLikelyMobileDevice()) {
+    return { facingMode: { ideal: "environment" } };
+  }
+
+  if (window.Html5Qrcode?.getCameras) {
+    try {
+      const cameras = await window.Html5Qrcode.getCameras();
+      if (cameras?.length) {
+        const preferredCamera =
+          cameras.find((camera) => /back|rear|environment/i.test(camera.label || "")) ||
+          cameras[0];
+        if (preferredCamera?.id) {
+          return { deviceId: { exact: preferredCamera.id } };
+        }
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoInputs = devices.filter((device) => device.kind === "videoinput");
+    if (videoInputs.length) {
+      const preferredInput =
+        videoInputs.find((device) => /back|rear|environment/i.test(device.label || "")) ||
+        videoInputs[0];
+      if (preferredInput?.deviceId) {
+        return { deviceId: { exact: preferredInput.deviceId } };
+      }
+    }
+  } catch (error) {
+    console.error(error);
+  }
+
+  return { facingMode: "user" };
+}
+
+async function startDesktopQuagga(preferredCameraConfig) {
+  if (!window.Quagga) return false;
+
+  setScannerSurface("reader");
+  const reader = document.querySelector("#scannerReader");
+  if (!reader) return false;
+  reader.innerHTML = "";
+
+  const constraints = {
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    ...preferredCameraConfig
+  };
+
+  await new Promise((resolve, reject) => {
+    window.Quagga.init(
+      {
+        inputStream: {
+          type: "LiveStream",
+          target: reader,
+          constraints,
+          area: { top: "5%", right: "5%", left: "5%", bottom: "5%" }
+        },
+        locator: {
+          patchSize: "large",
+          halfSample: false
+        },
+        numOfWorkers: 2,
+        frequency: 20,
+        decoder: {
+          readers: ["ean_reader", "ean_8_reader", "code_128_reader", "upc_reader", "upc_e_reader"]
+        },
+        locate: true
+      },
+      (error) => {
+        if (error) reject(error);
+        else resolve();
+      }
+    );
+  });
+
+  window.Quagga.onDetected(handleQuaggaDetected);
+  window.Quagga.start();
+  quaggaActive = true;
+  return true;
+}
+
+function handleQuaggaDetected(result) {
+  if (scannerLocked) return;
+  const rawValue = result?.codeResult?.code?.trim();
+  if (!rawValue) return;
+  scannerLocked = true;
+  applyScannedBarcode(rawValue);
+  if (navigator.vibrate) navigator.vibrate(60);
+  void stopBarcodeScanner();
 }
 
 function mapRemoteProduct(product) {
@@ -262,6 +451,8 @@ async function loadRemoteState() {
 
   state = {
     settings: {
+      ...defaultState.settings,
+      ...(state.settings || {}),
       storeName: settingsRes.data?.store_name || "OyuncakPOS Mağaza",
       storeOwner: settingsRes.data?.store_owner || "",
       storeAddress: settingsRes.data?.store_address || "",
@@ -314,6 +505,116 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
+function getSaleById(saleId) {
+  return state.sales.find((sale) => sale.id === saleId);
+}
+
+function formatSaleShareText(sale) {
+  const lines = [
+    `${state.settings.storeName || "OyuncakPOS"} satış özeti`,
+    `${sale.mode === "wholesale" ? "Toptan" : "Perakende"} satış`,
+    `Müşteri: ${getCustomerName(sale.customerId)}`,
+    `Ödeme: ${sale.paymentMethod}`,
+    `Tarih: ${formatDate(sale.createdAt)}`,
+    "",
+    "Ürünler:"
+  ];
+
+  sale.items.forEach((item) => {
+    lines.push(`- ${item.name} x${item.quantity} / ${formatCurrency(item.price * item.quantity)}`);
+  });
+
+  lines.push("");
+  lines.push(`Toplam: ${formatCurrency(sale.total)}`);
+  if (sale.discount) lines.push(`İndirim: ${formatCurrency(sale.discount)}`);
+  if (sale.note) lines.push(`Not: ${sale.note}`);
+
+  return lines.join("\n");
+}
+
+function printSaleReceipt(saleId) {
+  const sale = getSaleById(saleId);
+  if (!sale) return showToast("Satış bulunamadı.");
+
+  const receiptRows = sale.items
+    .map(
+      (item) => `
+        <tr>
+          <td>${escapeHtml(item.name)}</td>
+          <td>${item.quantity}</td>
+          <td>${formatCurrency(item.price)}</td>
+          <td>${formatCurrency(item.price * item.quantity)}</td>
+        </tr>
+      `
+    )
+    .join("");
+
+  const printWindow = window.open("", "_blank", "width=760,height=900");
+  if (!printWindow) return showToast("Yazdırma penceresi açılamadı.");
+
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html lang="tr">
+    <head>
+      <meta charset="UTF-8">
+      <title>Satış Fişi</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
+        h2, p { margin: 0 0 8px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+        th, td { border-bottom: 1px solid #ddd; padding: 10px 8px; text-align: left; }
+        .summary { margin-top: 18px; display: grid; gap: 6px; }
+      </style>
+    </head>
+    <body>
+      <h2>${escapeHtml(state.settings.storeName || "OyuncakPOS")}</h2>
+      <p>${sale.mode === "wholesale" ? "Toptan" : "Perakende"} satış</p>
+      <p>Müşteri: ${escapeHtml(getCustomerName(sale.customerId))}</p>
+      <p>Ödeme: ${escapeHtml(sale.paymentMethod)}</p>
+      <p>Tarih: ${escapeHtml(formatDate(sale.createdAt))}</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Ürün</th>
+            <th>Adet</th>
+            <th>Birim</th>
+            <th>Tutar</th>
+          </tr>
+        </thead>
+        <tbody>${receiptRows}</tbody>
+      </table>
+      <div class="summary">
+        <strong>Toplam: ${formatCurrency(sale.total)}</strong>
+        ${sale.discount ? `<span>İndirim: ${formatCurrency(sale.discount)}</span>` : ""}
+        ${sale.note ? `<span>Not: ${escapeHtml(sale.note)}</span>` : ""}
+      </div>
+      <script>window.onload = function(){ window.print(); };</script>
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
+}
+
+function shareSaleByEmail(saleId) {
+  const sale = getSaleById(saleId);
+  if (!sale) return showToast("Satış bulunamadı.");
+  const subject = encodeURIComponent(`${state.settings.storeName || "OyuncakPOS"} satış özeti`);
+  const body = encodeURIComponent(formatSaleShareText(sale));
+  window.open(`mailto:?subject=${subject}&body=${body}`, "_blank");
+}
+
+function shareSaleByWhatsApp(saleId) {
+  const sale = getSaleById(saleId);
+  if (!sale) return showToast("Satış bulunamadı.");
+  const customer = state.customers.find((item) => item.id === sale.customerId);
+  const phoneDigits = String(customer?.phone || "").replace(/\D/g, "");
+  const text = encodeURIComponent(formatSaleShareText(sale));
+  const whatsappUrl = phoneDigits
+    ? `https://wa.me/${phoneDigits}?text=${text}`
+    : `https://wa.me/?text=${text}`;
+  window.open(whatsappUrl, "_blank");
+}
+
 function showToast(message) {
   const toast = document.querySelector("#toast");
   toast.textContent = message;
@@ -334,6 +635,67 @@ function generateStockCode(wholesalePrice) {
     ? String(safeValue)
     : safeValue.toFixed(2).replace(/\.00$/, "").replace(".", "");
   return `TT-${priceText} 0004`;
+}
+
+function normalizeHeaderKey(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function getExcelCell(row, aliases) {
+  const entries = Object.entries(row || {});
+  for (const [key, value] of entries) {
+    const normalizedKey = normalizeHeaderKey(key);
+    if (aliases.includes(normalizedKey)) return value;
+  }
+  return "";
+}
+
+function mapExcelRowToProduct(row) {
+  const barcode = String(
+    getExcelCell(row, ["barkod", "barcode", "urun barkodu", "urun barkod", "barkod no"])
+  ).trim();
+
+  const name = String(
+    getExcelCell(row, ["urun adi", "urun adi", "urun", "urun ismi", "product name", "ad"])
+  ).trim();
+
+  const brand = String(
+    getExcelCell(row, ["marka", "brand"])
+  ).trim();
+
+  const retailPrice = Number(
+    String(getExcelCell(row, ["perakende", "perakende fiyat", "perakende fiyati", "satis fiyat", "retail", "retail price"]) || 0)
+      .replace(",", ".")
+  );
+
+  const wholesalePrice = Number(
+    String(getExcelCell(row, ["toptan", "toptan fiyat", "toptan fiyati", "alis fiyat", "wholesale", "wholesale price"]) || 0)
+      .replace(",", ".")
+  );
+
+  const stock = Number(
+    String(getExcelCell(row, ["stok", "stok adedi", "adet", "miktar", "quantity"]) || 0)
+      .replace(",", ".")
+  );
+
+  const stockCodeFromFile = String(
+    getExcelCell(row, ["stok kodu", "stok kod", "stock code", "stockcode"])
+  ).trim();
+
+  return {
+    barcode,
+    name,
+    brand,
+    retailPrice: Number.isFinite(retailPrice) ? retailPrice : 0,
+    wholesalePrice: Number.isFinite(wholesalePrice) ? wholesalePrice : 0,
+    stock: Number.isFinite(stock) ? stock : 0,
+    stockCode: stockCodeFromFile || generateStockCode(wholesalePrice)
+  };
 }
 
 function getCustomerName(customerId) {
@@ -456,14 +818,26 @@ async function startBarcodeScanner(targetInputId, mode) {
     scannerLocked = false;
     setScannerOverlayVisible(true);
 
-    if ("BarcodeDetector" in window) {
+    const preferHtml5Scanner = !isLikelyMobileDevice();
+    const preferredCameraConfig = await getPreferredCameraConfig();
+
+    if (preferHtml5Scanner) {
+      try {
+        const quaggaStarted = await startDesktopQuagga(preferredCameraConfig);
+        if (quaggaStarted) return;
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    if (!preferHtml5Scanner && "BarcodeDetector" in window) {
       setScannerSurface("video");
       barcodeDetectorInstance = new window.BarcodeDetector({
         formats: ["ean_13", "ean_8", "code_128", "upc_a", "upc_e"]
       });
       scannerStream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: { ideal: "environment" },
+          ...preferredCameraConfig,
           width: { ideal: 1920 },
           height: { ideal: 1080 }
         },
@@ -471,22 +845,9 @@ async function startBarcodeScanner(targetInputId, mode) {
       });
       const video = document.querySelector("#scannerVideo");
       video.srcObject = scannerStream;
-
-      scannerInterval = setInterval(async () => {
-        if (!video.videoWidth || scannerLocked) return;
-        try {
-          const barcodes = await barcodeDetectorInstance.detect(video);
-          if (!barcodes.length) return;
-          const rawValue = barcodes[0].rawValue?.trim();
-          if (!rawValue) return;
-          scannerLocked = true;
-          applyScannedBarcode(rawValue);
-          if (navigator.vibrate) navigator.vibrate(60);
-          void stopBarcodeScanner();
-        } catch (error) {
-          console.error(error);
-        }
-      }, 80);
+      const [videoTrack] = scannerStream.getVideoTracks();
+      await optimizeScannerTrack(videoTrack);
+      runNativeBarcodeLoop(video);
       return;
     }
 
@@ -504,10 +865,10 @@ async function startBarcodeScanner(targetInputId, mode) {
         : undefined;
 
       await html5QrCodeInstance.start(
-        { facingMode: "environment" },
+        preferredCameraConfig,
         {
-          fps: 24,
-          qrbox: { width: 180, height: 90 },
+          fps: preferHtml5Scanner ? 20 : 30,
+          qrbox: preferHtml5Scanner ? { width: 420, height: 220 } : { width: 260, height: 180 },
           aspectRatio: 1.7777778,
           disableFlip: false,
           formatsToSupport
@@ -536,6 +897,10 @@ async function startBarcodeScanner(targetInputId, mode) {
 
 async function stopBarcodeScanner() {
   scannerLocked = false;
+  if (scannerFrameRequest) {
+    cancelAnimationFrame(scannerFrameRequest);
+    scannerFrameRequest = null;
+  }
   if (scannerInterval) {
     clearInterval(scannerInterval);
     scannerInterval = null;
@@ -544,8 +909,19 @@ async function stopBarcodeScanner() {
     scannerStream.getTracks().forEach((track) => track.stop());
     scannerStream = null;
   }
+  if (window.Quagga && quaggaActive) {
+    try {
+      window.Quagga.offDetected(handleQuaggaDetected);
+      window.Quagga.stop();
+    } catch (error) {
+      console.error(error);
+    }
+    quaggaActive = false;
+  }
   const video = document.querySelector("#scannerVideo");
   if (video) video.srcObject = null;
+  const reader = document.querySelector("#scannerReader");
+  if (reader) reader.innerHTML = "";
   if (html5QrCodeInstance) {
     try {
       await html5QrCodeInstance.stop();
@@ -579,6 +955,22 @@ function applyScannedBarcode(rawValue) {
     }
     else showToast("Bu barkodla ürün bulunamadı.");
   } else if (scannerMode === "editor") {
+    const existingProduct = state.products.find((item) => item.barcode === rawValue);
+    if (existingProduct) {
+      document.querySelector("#productId").value = existingProduct.id;
+      document.querySelector("#productName").value = existingProduct.name;
+      document.querySelector("#productBarcode").value = existingProduct.barcode;
+      document.querySelector("#productBrand").value = existingProduct.brand || "";
+      document.querySelector("#retailPrice").value = existingProduct.retailPrice;
+      document.querySelector("#wholesalePrice").value = existingProduct.wholesalePrice;
+      document.querySelector("#stockQuantity").value = existingProduct.stock;
+      document.querySelector("#stockCode").value = existingProduct.stockCode || generateStockCode(existingProduct.wholesalePrice);
+      document.querySelector("#productImageData").value = existingProduct.image || "";
+      updateProductImagePreview(existingProduct.image || "");
+      updateBarcodePreview(existingProduct.barcode);
+      showToast("Ürün bulundu, stok kartı açıldı.");
+      return;
+    }
     updateBarcodePreview(rawValue);
     showToast("Barkod alana eklendi.");
   }
@@ -700,14 +1092,13 @@ function getProductLabelMarkup(product) {
       <div class="barcode-title">${escapeHtml(product.name)}</div>
       <div class="barcode-body">
         <div class="barcode-info-block">
-          <div class="barcode-price-label">Perakende</div>
           <div class="barcode-price-value">${formatCurrency(product.retailPrice)}</div>
         </div>
         <div class="barcode-visual">${svg}</div>
       </div>
       <div class="barcode-meta">
-        <span>Stok Kodu: ${escapeHtml(product.stockCode || generateStockCode(product.wholesalePrice))}</span>
-        <strong>Stok: ${Number(product.stock || 0)}</strong>
+        <span>${product.brand ? escapeHtml(product.brand) : ""}</span>
+        <strong>${Number(product.stock || 0)}</strong>
       </div>
     </div>
   `;
@@ -736,7 +1127,7 @@ function updateBarcodePreview(barcodeValue) {
     name: productName,
     barcode: barcodeValue,
     retailPrice,
-    category: document.querySelector("#productCategory").value.trim(),
+    brand: document.querySelector("#productBrand").value.trim(),
     image
   };
   preview.innerHTML = generateEan13Svg(barcodeValue)
@@ -1319,6 +1710,11 @@ function renderReports() {
                 <span>${formatDate(sale.createdAt)}</span>
               </div>
               <p class="muted">${sale.items.map((item) => `${item.name} x${item.quantity}`).join(", ")}</p>
+              <div class="inline-actions">
+                <button type="button" data-print-sale="${sale.id}">Yazdır</button>
+                <button type="button" data-email-sale="${sale.id}">Mail Gönder</button>
+                <button type="button" data-whatsapp-sale="${sale.id}">WhatsApp</button>
+              </div>
             </article>
           `
         )
@@ -1332,9 +1728,13 @@ function renderSettings() {
   document.querySelector("#storeAddress").value = state.settings.storeAddress || "";
   document.querySelector("#storePhone").value = state.settings.storePhone || "";
   document.querySelector("#storeCurrency").value = state.settings.storeCurrency || "TRY";
+  document.querySelector("#panelTitleSetting").value = state.settings.panelTitle || "OyuncakPOS";
+  document.querySelector("#accentColorSetting").value = state.settings.accentColor || "orange";
+  document.querySelector("#densitySetting").value = state.settings.density || "comfortable";
 }
 
 function renderAll() {
+  applyCustomizationSettings();
   renderDashboard();
   renderProducts();
   renderCustomers();
@@ -1342,7 +1742,7 @@ function renderAll() {
   renderInventoryMovements();
   renderReports();
   renderSettings();
-  if (!shouldUseCloud()) saveState();
+  saveState();
 }
 
 async function persistSettingsRemote() {
@@ -1596,7 +1996,7 @@ async function handleProductSubmit(event) {
     id: id || crypto.randomUUID(),
     name: formData.get("name").trim(),
     barcode: formData.get("barcode").trim(),
-    category: formData.get("category").trim(),
+    category: "",
     brand: formData.get("brand").trim(),
     retailPrice: Number(formData.get("retailPrice")),
     wholesalePrice,
@@ -1791,7 +2191,10 @@ async function handleSettingsSubmit(event) {
     storeOwner: formData.get("storeOwner").trim(),
     storeAddress: formData.get("storeAddress").trim(),
     storePhone: formData.get("storePhone").trim(),
-    storeCurrency: formData.get("storeCurrency").trim() || "TRY"
+    storeCurrency: formData.get("storeCurrency").trim() || "TRY",
+    panelTitle: formData.get("panelTitle").trim() || "OyuncakPOS",
+    accentColor: formData.get("accentColor") || "orange",
+    density: formData.get("density") || "comfortable"
   };
   try {
     await persistSettingsRemote();
@@ -1898,6 +2301,40 @@ function exportData() {
   showToast("Yedek dosyası indirildi.");
 }
 
+function downloadExcelTemplate() {
+  if (!window.XLSX) {
+    showToast("Excel şablonu oluşturulamadı.");
+    return;
+  }
+
+  const templateRows = [
+    {
+      Barkod: "869100100001",
+      "Ürün Adı": "Oyuncak Araba",
+      Marka: "ToyStar",
+      "Perakende Fiyat": 150,
+      "Toptan Fiyat": 100,
+      "Stok": 12,
+      "Stok Kodu": "TT-100 0004"
+    },
+    {
+      Barkod: "869100100002",
+      "Ürün Adı": "Peluş Ayı",
+      Marka: "Mutlu Kids",
+      "Perakende Fiyat": 220,
+      "Toptan Fiyat": 160,
+      "Stok": 8,
+      "Stok Kodu": "TT-160 0004"
+    }
+  ];
+
+  const worksheet = window.XLSX.utils.json_to_sheet(templateRows);
+  const workbook = window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(workbook, worksheet, "Urunler");
+  window.XLSX.writeFile(workbook, "oyuncakpos-excel-sablon.xlsx");
+  showToast("Excel şablonu indirildi.");
+}
+
 function importData(event) {
   const [file] = event.target.files;
   if (!file) return;
@@ -1918,6 +2355,76 @@ function importData(event) {
     }
   };
   reader.readAsText(file);
+  event.target.value = "";
+}
+
+async function importExcelProducts(event) {
+  const [file] = event.target.files;
+  if (!file) return;
+  if (!window.XLSX) {
+    showToast("Excel modülü yüklenemedi.");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const workbook = window.XLSX.read(buffer, { type: "array" });
+    const firstSheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[firstSheetName];
+    const rows = window.XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+    if (!rows.length) {
+      showToast("Excel dosyasında ürün bulunamadı.");
+      event.target.value = "";
+      return;
+    }
+
+    let createdCount = 0;
+    let updatedCount = 0;
+
+    for (const row of rows) {
+      const mapped = mapExcelRowToProduct(row);
+      if (!mapped.barcode || !mapped.name) continue;
+
+      const existingProduct = state.products.find((product) => product.barcode === mapped.barcode);
+
+      if (existingProduct) {
+        existingProduct.name = mapped.name || existingProduct.name;
+        existingProduct.brand = mapped.brand || existingProduct.brand;
+        existingProduct.retailPrice = mapped.retailPrice;
+        existingProduct.wholesalePrice = mapped.wholesalePrice;
+        existingProduct.stock = mapped.stock;
+        existingProduct.stockCode = mapped.stockCode || generateStockCode(mapped.wholesalePrice);
+        await persistProductRemote(existingProduct);
+        updatedCount += 1;
+      } else {
+        const newProduct = {
+          id: crypto.randomUUID(),
+          name: mapped.name,
+          barcode: mapped.barcode,
+          category: "",
+          brand: mapped.brand,
+          retailPrice: mapped.retailPrice,
+          wholesalePrice: mapped.wholesalePrice,
+          stock: mapped.stock,
+          criticalStock: 0,
+          stockCode: mapped.stockCode || generateStockCode(mapped.wholesalePrice),
+          image: ""
+        };
+        state.products.unshift(newProduct);
+        await persistProductRemote(newProduct);
+        createdCount += 1;
+      }
+    }
+
+    renderAll();
+    showToast(`Excel aktarıldı. Yeni: ${createdCount}, Güncellenen: ${updatedCount}`);
+  } catch (error) {
+    console.error(error);
+    showToast("Excel dosyası okunamadı.");
+  }
+
   event.target.value = "";
 }
 
@@ -1951,6 +2458,7 @@ function printBarcodeLabel(productId) {
         .barcode-visual { display: flex; align-items: center; justify-content: center; }
         .barcode-visual svg { width: 100%; height: auto; }
         .barcode-meta { margin-top: 10px; display: flex; justify-content: space-between; gap: 8px; font-size: 14px; font-weight: 700; }
+        .barcode-meta span:empty { display: none; }
         @media print {
           body { background: #fff; padding: 0; }
           .sheet { justify-content: flex-start; }
@@ -2001,6 +2509,7 @@ function printMultipleBarcodeLabels(products) {
         .barcode-visual { display: flex; align-items: center; justify-content: center; }
         .barcode-visual svg { width: 100%; height: auto; }
         .barcode-meta { margin-top: 10px; display: flex; justify-content: space-between; gap: 8px; font-size: 14px; font-weight: 700; }
+        .barcode-meta span:empty { display: none; }
         @media print {
           body { background: #fff; padding: 0; }
           .grid { grid-template-columns: repeat(2, 1fr); gap: 8mm; }
@@ -2053,6 +2562,9 @@ async function handleDocumentClick(event) {
   const editCustomerId = event.target.dataset.editCustomer;
   const deleteCustomerId = event.target.dataset.deleteCustomer;
   const printBarcodeId = event.target.dataset.printBarcode;
+  const printSaleId = event.target.dataset.printSale;
+  const emailSaleId = event.target.dataset.emailSale;
+  const whatsappSaleId = event.target.dataset.whatsappSale;
   const savePricesId = event.target.dataset.savePrices;
   const quickPaidValue = event.target.dataset.quickPaid;
   const paymentMethodValue = event.target.dataset.paymentMethod;
@@ -2067,7 +2579,6 @@ async function handleDocumentClick(event) {
   document.querySelector("#productId").value = product.id;
   document.querySelector("#productName").value = product.name;
   document.querySelector("#productBarcode").value = product.barcode;
-  document.querySelector("#productCategory").value = product.category;
   document.querySelector("#productBrand").value = product.brand;
   document.querySelector("#retailPrice").value = product.retailPrice;
   document.querySelector("#wholesalePrice").value = product.wholesalePrice;
@@ -2095,6 +2606,18 @@ async function handleDocumentClick(event) {
 
   if (printBarcodeId) {
     printBarcodeLabel(printBarcodeId);
+  }
+
+  if (printSaleId) {
+    printSaleReceipt(printSaleId);
+  }
+
+  if (emailSaleId) {
+    shareSaleByEmail(emailSaleId);
+  }
+
+  if (whatsappSaleId) {
+    shareSaleByWhatsApp(whatsappSaleId);
   }
 
   if (savePricesId) {
@@ -2320,14 +2843,15 @@ function bindEvents() {
   document.querySelector("#productImageFile").addEventListener("change", handleProductImageChange);
   document.querySelector("#productBarcode").addEventListener("input", (event) => updateBarcodePreview(event.target.value));
   document.querySelector("#productName").addEventListener("input", () => updateBarcodePreview(document.querySelector("#productBarcode").value));
-  document.querySelector("#productCategory").addEventListener("input", () => updateBarcodePreview(document.querySelector("#productBarcode").value));
   document.querySelector("#retailPrice").addEventListener("input", () => updateBarcodePreview(document.querySelector("#productBarcode").value));
+  document.querySelector("#productBrand").addEventListener("input", () => updateBarcodePreview(document.querySelector("#productBarcode").value));
   document.querySelector("#wholesalePrice").addEventListener("input", (event) => {
     document.querySelector("#stockCode").value = generateStockCode(event.target.value);
   });
-  document.querySelector("#seedDemoBtn").addEventListener("click", handleSeedDemo);
   document.querySelector("#exportBtn").addEventListener("click", exportData);
   document.querySelector("#importFile").addEventListener("change", importData);
+  document.querySelector("#excelImportFile").addEventListener("change", importExcelProducts);
+  document.querySelector("#downloadExcelTemplateBtn").addEventListener("click", downloadExcelTemplate);
   document.querySelector("#removeProductImageBtn").addEventListener("click", () => {
     document.querySelector("#productImageData").value = "";
     document.querySelector("#productImageFile").value = "";
