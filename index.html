@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OyuncakPOS | Barkodlu Stok ve Satis</title>
+  <title>OyuncakPOS | Barkodlu Stok ve Satış</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -12,35 +12,35 @@
       <div class="brand">
         <div class="brand-mark">OP</div>
         <div>
-          <p class="eyebrow">Oyuncak Magazasi</p>
+          <p class="eyebrow">Oyuncak Mağazası</p>
           <h1>OyuncakPOS</h1>
         </div>
         <button id="mobileMenuCloseBtn" class="ghost-btn mobile-menu-close-btn" type="button">Kapat</button>
       </div>
 
-      <nav class="nav-tabs" aria-label="Ana bolumler">
-        <button class="nav-tab active" data-view="dashboard">Genel Bakis</button>
-        <button class="nav-tab" data-view="sales">Satis Ekrani</button>
-        <button class="nav-tab" data-view="products">Urunler</button>
-        <button class="nav-tab" data-view="product-editor">Urun Ekle</button>
+      <nav class="nav-tabs" aria-label="Ana bölümler">
+        <button class="nav-tab active" data-view="dashboard">Genel Bakış</button>
+        <button class="nav-tab" data-view="sales">Satış Ekranı</button>
+        <button class="nav-tab" data-view="products">Ürünler</button>
+        <button class="nav-tab" data-view="product-editor">Ürün Ekle</button>
         <button class="nav-tab" data-view="inventory">Stok Hareketi</button>
-        <button class="nav-tab" data-view="customers">Musteriler</button>
+        <button class="nav-tab" data-view="customers">Müşteriler</button>
         <button class="nav-tab" data-view="reports">Raporlar</button>
         <button class="nav-tab" data-view="settings">Ayarlar</button>
       </nav>
 
       <section class="sidebar-card">
-        <p class="sidebar-label">Bugun</p>
+        <p class="sidebar-label">Bugün</p>
         <strong id="todayDate"></strong>
         <span id="liveClock"></span>
       </section>
 
       <section class="sidebar-card">
-        <p class="sidebar-label">Hizli Bilgi</p>
+        <p class="sidebar-label">Hızlı Bilgi</p>
         <ul class="mini-stats">
-          <li><span>Toplam Urun</span><strong id="miniProductCount">0</strong></li>
+          <li><span>Toplam Ürün</span><strong id="miniProductCount">0</strong></li>
           <li><span>Stokta Yok</span><strong id="miniCriticalCount">0</strong></li>
-          <li><span>Bugun Satis</span><strong id="miniSalesCount">0</strong></li>
+          <li><span>Bugün Satış</span><strong id="miniSalesCount">0</strong></li>
         </ul>
       </section>
     </aside>
@@ -56,34 +56,19 @@
             </span>
           </button>
           <p class="eyebrow">Panel</p>
-          <h2 id="pageTitle">Genel Bakis</h2>
+          <h2 id="pageTitle">Genel Bakış</h2>
         </div>
         <div class="header-actions">
           <span id="connectionBadge" class="chip">Yerel Mod</span>
-          <button id="logoutBtn" class="ghost-btn" type="button" hidden>Cikis Yap</button>
-          <button id="seedDemoBtn" class="ghost-btn">Demo Verisi Yukle</button>
+          <button id="logoutBtn" class="ghost-btn" type="button" hidden>Çıkış Yap</button>
+          <button id="seedDemoBtn" class="ghost-btn">Demo Verisi Yükle</button>
           <button id="exportBtn" class="ghost-btn">Yedekle</button>
-          <label class="ghost-btn import-btn" for="importFile">Geri Yukle</label>
+          <label class="ghost-btn import-btn" for="importFile">Geri Yükle</label>
           <input id="importFile" type="file" accept="application/json" hidden>
         </div>
       </header>
 
       <section class="view active" id="view-dashboard">
-        <div class="hero-card">
-          <div>
-            <p class="eyebrow">Akilli Kasa ve Stok</p>
-            <h3>Perakende ve toptan satisi tek ekrandan yonet.</h3>
-            <p class="hero-copy">
-              Barkod okut, fiyat turunu sec, stogu otomatik dus. Urun, musteri ve kasa hareketlerini ayni panelde takip et.
-            </p>
-          </div>
-          <div class="hero-badges">
-            <span>Barkod Destekli</span>
-            <span>Yerel Veri Kaydi</span>
-            <span>JSON Yedek</span>
-          </div>
-        </div>
-
         <div class="stats-grid" id="dashboardStats"></div>
 
         <div class="panel-grid">
@@ -108,7 +93,7 @@
           <article class="panel sales-workspace">
             <div class="sales-topbar">
               <div class="sales-mode-box">
-                <label for="saleMode">Satis Tipi</label>
+                <label for="saleMode">Satış Tipi</label>
                 <select id="saleMode" name="saleMode">
                   <option value="retail">Perakende</option>
                   <option value="wholesale">Toptan</option>
@@ -117,19 +102,19 @@
 
               <form id="saleForm" class="sales-searchbar">
                 <div class="barcode-search-field">
-                  <label for="barcodeInput">Urun Barkodu</label>
+                  <label for="barcodeInput">Ürün Barkodu</label>
                   <div class="sales-search-inline">
-                    <input id="barcodeInput" name="barcode" type="text" placeholder="Urun barkodunu okutunuz...">
+                    <input id="barcodeInput" name="barcode" type="text" placeholder="Ürün barkodunu okutunuz...">
                     <button type="submit" class="primary-btn">Ara</button>
                     <button type="button" id="priceCheckBtn" class="ghost-btn">Fiyat Gor</button>
-                    <button type="button" class="ghost-btn" data-scan-target="barcodeInput" data-scan-mode="sale-add">Tara</button>
+                    <button type="button" class="ghost-btn scan-btn" data-scan-target="barcodeInput" data-scan-mode="sale-add">Tara</button>
                   </div>
                 </div>
               </form>
 
               <div class="sales-amount-cards">
                 <article class="amount-card">
-                  <span>Odenen</span>
+                  <span>Ödenen</span>
                   <strong id="paidValueDisplay">0 TL</strong>
                 </article>
                 <article class="amount-card total">
@@ -137,7 +122,7 @@
                   <strong id="grandTotalTopValue">0 TL</strong>
                 </article>
                 <article class="amount-card success">
-                  <span>Para Ustu</span>
+                  <span>Para Üstü</span>
                   <strong id="changeDueValue">0 TL</strong>
                 </article>
               </div>
@@ -145,7 +130,7 @@
 
             <div class="sales-customer-strip">
               <div class="sales-customer-select">
-                <label for="saleCustomer">Musteri Sec</label>
+                <label for="saleCustomer">Müşteri Seç</label>
                 <select id="saleCustomer" name="saleCustomer"></select>
               </div>
               <div id="saleCustomerQuickList" class="customer-quick-tabs"></div>
@@ -155,34 +140,34 @@
               <div class="sales-cart-panel">
                 <div class="sales-section-head">
                   <h3>Sepet</h3>
-                  <span class="muted">Eklenen urunler</span>
+                  <span class="muted">Eklenen ürünler</span>
                 </div>
                 <div id="cartItems" class="list-stack sales-cart-list"></div>
               </div>
 
               <aside class="sales-payment-panel">
                 <div class="sales-section-head">
-                  <h3>Odeme</h3>
+                  <h3>Ödeme</h3>
                   <span class="muted">Tahsilat ve tamamla</span>
                 </div>
 
                 <div class="cart-summary sales-summary-box">
                   <div><span>Ara Toplam</span><strong id="subtotalValue">0 TL</strong></div>
-                  <div><span>Indirim</span><strong id="discountValue">0 TL</strong></div>
+                  <div><span>İndirim</span><strong id="discountValue">0 TL</strong></div>
                   <div class="total-line"><span>Genel Toplam</span><strong id="grandTotalValue">0 TL</strong></div>
                 </div>
 
                 <form id="completeSaleForm" class="sales-payment-form">
                   <div class="field">
-                    <label for="discountInput">Iskonto / Indirim</label>
+                    <label for="discountInput">İskonto / İndirim</label>
                     <input id="discountInput" name="discount" type="number" min="0" step="0.01" value="0">
                   </div>
                   <div class="field">
-                    <label for="paidInput">Odenen Tutar</label>
+                    <label for="paidInput">Ödenen Tutar</label>
                     <input id="paidInput" name="paidAmount" type="number" min="0" step="0.01" value="0">
                   </div>
                   <div class="field span-2">
-                    <label>Hizli Tutar</label>
+                    <label>Hızlı Tutar</label>
                     <div class="quick-amount-grid">
                       <button type="button" class="quick-amount-btn" data-quick-paid="20">20</button>
                       <button type="button" class="quick-amount-btn" data-quick-paid="50">50</button>
@@ -193,7 +178,7 @@
                     </div>
                   </div>
                   <div class="field span-2">
-                    <label for="paymentMethod">Odeme Tipi</label>
+                    <label for="paymentMethod">Ödeme Tipi</label>
                     <select id="paymentMethod" name="paymentMethod" class="hidden-native-select">
                       <option value="Nakit">Nakit</option>
                       <option value="Kart">Kart</option>
@@ -203,7 +188,7 @@
                     <div class="payment-method-grid">
                       <button type="button" class="payment-method-btn active" data-payment-method="Nakit">NAKIT</button>
                       <button type="button" class="payment-method-btn" data-payment-method="Kart">POS</button>
-                      <button type="button" class="payment-method-btn" data-payment-method="Veresiye">ACIK HESAP</button>
+                      <button type="button" class="payment-method-btn" data-payment-method="Veresiye">AÇIK HESAP</button>
                       <button type="button" class="payment-method-btn" data-payment-method="Havale">DIGER</button>
                     </div>
                   </div>
@@ -213,7 +198,7 @@
                   </div>
                   <div class="actions span-2">
                     <button type="button" id="clearCartBtn" class="ghost-btn">Sepeti Temizle</button>
-                    <button type="submit" class="primary-btn">Satisi Tamamla</button>
+                    <button type="submit" class="primary-btn">Satışı Tamamla</button>
                   </div>
                 </form>
               </aside>
@@ -222,15 +207,15 @@
 
           <article class="panel sales-products-panel">
             <div class="panel-head">
-              <h3>Hizli Urun Bul</h3>
+              <h3>Hızlı Ürün Bul</h3>
               <span class="chip">Elle secim</span>
             </div>
 
             <div class="field">
               <label for="productSearchInput">Ara</label>
               <div class="inline-field">
-                <input id="productSearchInput" type="search" placeholder="Urun adi veya barkod yaz">
-                <button type="button" class="ghost-btn" data-scan-target="productSearchInput" data-scan-mode="search">Tara</button>
+                <input id="productSearchInput" type="search" placeholder="Ürün adı veya barkod yaz">
+                <button type="button" class="ghost-btn scan-btn" data-scan-target="productSearchInput" data-scan-mode="search">Tara</button>
               </div>
             </div>
 
@@ -242,31 +227,18 @@
       <section class="view" id="view-products">
         <section class="products-pane active">
           <div class="product-catalog">
-            <div class="catalog-hero panel">
-              <div>
-                <p class="eyebrow">Akilli Urun Yonetimi</p>
-                <h3>Stok, fiyat ve barkod akisini daha hizli yonet.</h3>
-                <p class="hero-copy">Arama, filtreleme ve hizli islem dugmeleriyle rafindaki tum oyuncaklari tek listede kontrol et.</p>
-              </div>
-              <div class="hero-badges">
-                <span>Anlik filtre</span>
-                <span>Gorselli katalog</span>
-                <span>Barkod etiketi</span>
-              </div>
-            </div>
-
             <div class="products-summary-grid" id="productSummaryGrid"></div>
 
             <div class="panel table-panel modern-table-panel">
               <div class="catalog-toolbar">
                 <div class="toolbar-search">
-                  <label for="catalogSearchInput">Hizli Ara</label>
-                  <input id="catalogSearchInput" type="search" placeholder="Urun adi, barkod, kategori veya marka">
+                  <label for="catalogSearchInput">Hızlı Ara</label>
+                  <input id="catalogSearchInput" type="search" placeholder="Ürün adı, barkod, kategori veya marka">
                 </div>
                 <div class="toolbar-filter">
                   <label for="catalogCategoryFilter">Kategori</label>
                   <select id="catalogCategoryFilter">
-                    <option value="all">Tum kategoriler</option>
+                    <option value="all">Tüm kategoriler</option>
                   </select>
                 </div>
                 <div class="toolbar-filter">
@@ -274,7 +246,7 @@
                   <select id="catalogStatusFilter">
                     <option value="all">Tum durumlar</option>
                     <option value="ok">Normal</option>
-                    <option value="danger">Tukendi</option>
+                    <option value="danger">Tükendi</option>
                   </select>
                 </div>
                 <div class="toolbar-filter">
@@ -283,16 +255,16 @@
                     <option value="name-asc">Ada gore A-Z</option>
                     <option value="stock-asc">Stok artan</option>
                     <option value="stock-desc">Stok azalan</option>
-                    <option value="retail-desc">Perakende fiyat yuksek</option>
-                    <option value="retail-asc">Perakende fiyat dusuk</option>
+                    <option value="retail-desc">Perakende fiyat yüksek</option>
+                    <option value="retail-asc">Perakende fiyat düşük</option>
                   </select>
                 </div>
               </div>
 
               <div class="panel-head catalog-table-head">
                 <div>
-                  <h3>Urun Listesi</h3>
-                  <p class="muted">Guncel raf durumu ve fiyatlar</p>
+                  <h3>Ürün Listesi</h3>
+                  <p class="muted">Güncel raf durumu ve fiyatlar</p>
                 </div>
                 <div class="catalog-head-actions">
                   <span class="chip" id="productCountChip">0 kayit</span>
@@ -303,14 +275,14 @@
                 <div class="bulk-actions-info">
                   <label class="bulk-check-label" for="selectAllProducts">
                     <input type="checkbox" id="selectAllProducts">
-                    <span>Tumunu Sec</span>
+                    <span>Tümünü Seç</span>
                   </label>
                   <strong id="selectedProductsCount">0 secili</strong>
                 </div>
                 <div class="bulk-actions-buttons">
-                  <button type="button" id="openProductEditorBtn" class="ghost-btn compact-btn">Urun Ekle</button>
-                  <button type="button" id="saveAllPricesBtn" class="ghost-btn compact-btn">Fiyatlari Kaydet</button>
-                  <button type="button" id="bulkPrintBarcodesBtn" class="ghost-btn compact-btn">Toplu Barkod Yazdir</button>
+                  <button type="button" id="openProductEditorBtn" class="ghost-btn compact-btn">Ürün Ekle</button>
+                  <button type="button" id="saveAllPricesBtn" class="ghost-btn compact-btn">Fiyatları Kaydet</button>
+                  <button type="button" id="bulkPrintBarcodesBtn" class="ghost-btn compact-btn">Toplu Barkod Yazdır</button>
                   <button type="button" id="bulkDeleteProductsBtn" class="ghost-btn compact-btn danger-lite-btn">Toplu Sil</button>
                 </div>
               </div>
@@ -320,7 +292,7 @@
                   <thead>
                     <tr>
                       <th>Sec</th>
-                      <th>Urun Karti</th>
+                      <th>Ürün Kartı</th>
                       <th>Stok Durumu</th>
                       <th>Fiyatlar</th>
                       <th>Barkod</th>
@@ -339,8 +311,8 @@
           <div class="panel product-editor-panel">
             <div class="panel-head">
               <div>
-                <h3>Urun Editoru</h3>
-                <p class="muted">Yeni urun ekle veya mevcut urunu guncelle</p>
+                <h3>Ürün Editörü</h3>
+                <p class="muted">Yeni ürün ekle veya mevcut ürünü güncelle</p>
               </div>
               <span class="chip">Barkod, fiyat ve stok</span>
             </div>
@@ -349,14 +321,14 @@
               <input type="hidden" id="productId" name="productId">
               <input type="hidden" id="productImageData" name="image">
               <div class="field">
-                <label for="productName">Urun Adi</label>
+                <label for="productName">Ürün Adı</label>
                 <input id="productName" name="name" type="text" required>
               </div>
               <div class="field">
                 <label for="productBarcode">Barkod</label>
                 <div class="inline-field">
                   <input id="productBarcode" name="barcode" type="text" required>
-                  <button type="button" class="ghost-btn" data-scan-target="productBarcode" data-scan-mode="editor">Tara</button>
+                  <button type="button" class="ghost-btn scan-btn" data-scan-target="productBarcode" data-scan-mode="editor">Tara</button>
                 </div>
               </div>
               <div class="field">
@@ -384,13 +356,13 @@
                 <input id="stockCode" name="stockCode" type="text" readonly>
               </div>
               <div class="field span-2">
-                <label for="productImageFile">Urun Resmi</label>
+                <label for="productImageFile">Ürün Resmi</label>
                 <input id="productImageFile" type="file" accept="image/*" capture="environment">
                 <div class="media-picker">
-                  <img id="productImagePreview" class="product-image-preview hidden-preview" alt="Urun resmi onizleme">
+                  <img id="productImagePreview" class="product-image-preview hidden-preview" alt="Ürün resmi önizleme">
                   <div class="media-meta">
-                    <span class="muted">Telefonda kamerayi acip urun fotografi cekebilirsin. Resim bu tarayicida kaydedilir.</span>
-                    <button type="button" id="removeProductImageBtn" class="ghost-btn hidden-preview">Resmi Kaldir</button>
+                    <span class="muted">Telefonda kamerayı açıp ürün fotoğrafı çekebilirsin. Resim bu tarayıcıda kaydedilir.</span>
+                    <button type="button" id="removeProductImageBtn" class="ghost-btn hidden-preview">Resmi Kaldır</button>
                   </div>
                 </div>
               </div>
@@ -398,12 +370,12 @@
                 <label>Barkod Etiket Onizleme</label>
                 <div class="barcode-preview-card">
                   <div id="productBarcodePreview" class="barcode-svg-wrap muted">12 veya 13 haneli barkod girdiginde burada etiket onizlemesi olusur.</div>
-                  <span class="muted">Yazdirma icin sayisal 12 veya 13 haneli barkod kullan.</span>
+                  <span class="muted">Yazdırma için sayısal 12 veya 13 haneli barkod kullan.</span>
                 </div>
               </div>
               <div class="actions span-2">
                 <button type="reset" id="resetProductBtn" class="ghost-btn">Formu Temizle</button>
-                <button type="submit" class="primary-btn">Urunu Kaydet</button>
+                <button type="submit" class="primary-btn">Ürünü Kaydet</button>
               </div>
             </form>
           </div>
@@ -414,19 +386,19 @@
           <article class="panel">
             <div class="panel-head">
               <h3>Manuel Stok Hareketi</h3>
-              <span class="chip">Giris veya cikis</span>
+              <span class="chip">Giriş veya çıkış</span>
             </div>
 
             <form id="inventoryForm" class="form-grid">
               <div class="field span-2">
-                <label for="inventoryProduct">Urun</label>
+                <label for="inventoryProduct">Ürün</label>
                 <select id="inventoryProduct" name="productId"></select>
               </div>
               <div class="field">
                 <label for="inventoryType">Hareket Tipi</label>
                 <select id="inventoryType" name="type">
-                  <option value="add">Stok Girisi</option>
-                  <option value="remove">Stok Cikisi</option>
+                  <option value="add">Stok Girişi</option>
+                  <option value="remove">Stok Çıkışı</option>
                 </select>
               </div>
               <div class="field">
@@ -456,20 +428,20 @@
         <div class="two-column">
           <article class="panel">
             <div class="panel-head">
-              <h3>Musteri Kaydi</h3>
+              <h3>Müşteri Kaydı</h3>
             </div>
 
             <form id="customerForm" class="form-grid">
               <input type="hidden" id="customerId" name="customerId">
               <div class="field">
-                <label for="customerName">Musteri Adi</label>
+                <label for="customerName">Müşteri Adı</label>
                 <input id="customerName" name="name" type="text" required>
               </div>
               <div class="field">
-                <label for="customerType">Musteri Tipi</label>
+                <label for="customerType">Müşteri Tipi</label>
                 <select id="customerType" name="type">
                   <option value="Perakende">Perakende</option>
-                  <option value="Toptanci">Toptanci</option>
+                  <option value="Toptanci">Toptancı</option>
                   <option value="Bayi">Bayi</option>
                 </select>
               </div>
@@ -487,14 +459,14 @@
               </div>
               <div class="actions span-2">
                 <button type="reset" id="resetCustomerBtn" class="ghost-btn">Formu Temizle</button>
-                <button type="submit" class="primary-btn">Musteriyi Kaydet</button>
+                <button type="submit" class="primary-btn">Müşteriyi Kaydet</button>
               </div>
             </form>
           </article>
 
           <article class="panel table-panel">
             <div class="panel-head">
-              <h3>Musteriler</h3>
+              <h3>Müşteriler</h3>
             </div>
             <div id="customerList" class="list-stack"></div>
           </article>
@@ -505,14 +477,14 @@
         <div class="panel-grid">
           <article class="panel">
             <div class="panel-head">
-              <h3>Satis Ozeti</h3>
+              <h3>Satış Özeti</h3>
             </div>
             <div id="salesSummaryCards" class="stats-grid compact"></div>
           </article>
 
           <article class="panel">
             <div class="panel-head">
-              <h3>En Cok Satan Urunler</h3>
+              <h3>En Çok Satan Ürünler</h3>
             </div>
             <div id="topProductsList" class="list-stack"></div>
           </article>
@@ -520,7 +492,7 @@
 
         <div class="panel">
           <div class="panel-head">
-            <h3>Son Satislar</h3>
+            <h3>Son Satışlar</h3>
           </div>
           <div id="salesHistoryList" class="list-stack"></div>
         </div>
@@ -534,7 +506,7 @@
             </div>
             <form id="settingsForm" class="form-grid">
               <div class="field">
-                <label for="storeName">Magaza Adi</label>
+                <label for="storeName">Mağaza Adı</label>
                 <input id="storeName" name="storeName" type="text">
               </div>
               <div class="field">
@@ -554,7 +526,7 @@
                 <input id="storeCurrency" name="storeCurrency" type="text" value="TRY">
               </div>
               <div class="actions span-2">
-                <button type="submit" class="primary-btn">Ayarlari Kaydet</button>
+                <button type="submit" class="primary-btn">Ayarları Kaydet</button>
               </div>
             </form>
           </article>
@@ -565,9 +537,9 @@
             </div>
             <div class="notes">
               <p>1. Barkod okuyucu varsa imleci barkod alanina getirip okutman yeterli.</p>
-              <p>2. Perakende veya toptan fiyat satis ekraninda secilen moda gore otomatik kullanilir.</p>
-              <p>3. Tum veriler su anda bu tarayicida saklanir; duzenli JSON yedegi alman tavsiye edilir.</p>
-              <p>4. Istersen sonraki adimda bunu veritabani, kullanici girisi ve yazici fis destegiyle buyutebiliriz.</p>
+              <p>2. Perakende veya toptan fiyat satış ekranında seçilen moda göre otomatik kullanılır.</p>
+              <p>3. Tüm veriler şu anda bu tarayıcıda saklanır; düzenli JSON yedeği alman tavsiye edilir.</p>
+              <p>4. İstersen sonraki adımda bunu veritabanı, kullanıcı girişi ve yazıcı fiş desteğiyle büyütebiliriz.</p>
             </div>
           </article>
         </div>
@@ -582,17 +554,17 @@
       <div class="panel-head">
         <div>
           <p class="eyebrow">Menu</p>
-          <h3>Bolumler</h3>
+          <h3>Bölümler</h3>
         </div>
         <button id="mobileMenuClosePanelBtn" class="ghost-btn" type="button">Kapat</button>
       </div>
       <div class="mobile-nav-links">
-        <button class="mobile-nav-link" data-mobile-view="dashboard" type="button">Genel Bakis</button>
-        <button class="mobile-nav-link" data-mobile-view="sales" type="button">Satis Ekrani</button>
-        <button class="mobile-nav-link" data-mobile-view="products" type="button">Urunler</button>
-        <button class="mobile-nav-link" data-mobile-view="product-editor" type="button">Urun Ekle</button>
+        <button class="mobile-nav-link" data-mobile-view="dashboard" type="button">Genel Bakış</button>
+        <button class="mobile-nav-link" data-mobile-view="sales" type="button">Satış Ekranı</button>
+        <button class="mobile-nav-link" data-mobile-view="products" type="button">Ürünler</button>
+        <button class="mobile-nav-link" data-mobile-view="product-editor" type="button">Ürün Ekle</button>
         <button class="mobile-nav-link" data-mobile-view="inventory" type="button">Stok Hareketi</button>
-        <button class="mobile-nav-link" data-mobile-view="customers" type="button">Musteriler</button>
+        <button class="mobile-nav-link" data-mobile-view="customers" type="button">Müşteriler</button>
         <button class="mobile-nav-link" data-mobile-view="reports" type="button">Raporlar</button>
         <button class="mobile-nav-link" data-mobile-view="settings" type="button">Ayarlar</button>
       </div>
@@ -603,8 +575,8 @@
     <div class="auth-card">
       <div>
         <p class="eyebrow">OyuncakPOS Cloud</p>
-        <h3>Online giris yap</h3>
-        <p class="muted">Windows ve Mac'te ayni veriyi acmak icin hesabinla giris yap.</p>
+        <h3>Online giriş yap</h3>
+        <p class="muted">Windows ve Mac'te aynı veriyi açmak için hesabınla giriş yap.</p>
       </div>
       <form id="authForm" class="form-grid">
         <div class="field span-2">
@@ -612,11 +584,11 @@
           <input id="authEmail" type="email" autocomplete="username" required>
         </div>
         <div class="field span-2">
-          <label for="authPassword">Sifre</label>
+          <label for="authPassword">Şifre</label>
           <input id="authPassword" type="password" autocomplete="current-password" required>
         </div>
         <div class="actions span-2">
-          <button id="authSubmitBtn" type="submit" class="primary-btn">Giris Yap</button>
+          <button id="authSubmitBtn" type="submit" class="primary-btn">Giriş Yap</button>
         </div>
       </form>
       <p id="authMessage" class="muted"></p>
@@ -634,7 +606,45 @@
       </div>
       <div id="scannerReader" class="scanner-reader hidden-overlay"></div>
       <video id="scannerVideo" class="scanner-video" autoplay playsinline muted></video>
-      <p id="scannerMessage" class="muted">Kamerayi barkoda dogru tut.</p>
+      <p id="scannerMessage" class="muted">Kamerayı barkoda doğru tut.</p>
+    </div>
+  </div>
+
+  <div id="productQuickEditOverlay" class="auth-overlay hidden-overlay">
+    <div class="auth-card">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Hızlı Ürün Kartı</p>
+          <h3 id="productQuickEditTitle">Ürün</h3>
+        </div>
+        <button type="button" id="closeProductQuickEditBtn" class="ghost-btn">Kapat</button>
+      </div>
+      <form id="productQuickEditForm" class="form-grid">
+        <input type="hidden" id="productQuickEditId">
+        <div class="field span-2">
+          <label for="productQuickEditName">Ürün Adı</label>
+          <input id="productQuickEditName" type="text" readonly>
+        </div>
+        <div class="field">
+          <label for="productQuickEditRetail">Perakende</label>
+          <input id="productQuickEditRetail" type="number" min="0" step="0.01">
+        </div>
+        <div class="field">
+          <label for="productQuickEditWholesale">Toptan</label>
+          <input id="productQuickEditWholesale" type="number" min="0" step="0.01">
+        </div>
+        <div class="field">
+          <label for="productQuickEditStock">Stok Adedi</label>
+          <input id="productQuickEditStock" type="number" min="0" step="1">
+        </div>
+        <div class="field">
+          <label for="productQuickEditBarcode">Barkod</label>
+          <input id="productQuickEditBarcode" type="text" readonly>
+        </div>
+        <div class="actions span-2">
+          <button type="submit" class="primary-btn">Ürünü Güncelle</button>
+        </div>
+      </form>
     </div>
   </div>
 
