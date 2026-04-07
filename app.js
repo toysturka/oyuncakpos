@@ -14,6 +14,8 @@ let html5QrCodeInstance = null;
 let scannerLocked = false;
 let scannerFrameRequest = null;
 let quaggaActive = false;
+let selectedSaleIds = new Set();
+let pageTitles = {};
 
 function isLikelyMobileDevice() {
   return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
@@ -45,11 +47,12 @@ const defaultState = {
   inventoryMovements: [],
   cart: []
 };
+pageTitles["sales-history"] = "Satışlar";
 
 let state = loadState();
 let toastTimer;
 
-const pageTitles = {
+pageTitles = {
   dashboard: "Genel Bakış",
   sales: "Satış Ekranı",
   products: "Ürünler",
@@ -59,6 +62,9 @@ const pageTitles = {
   reports: "Raporlar",
   settings: "Ayarlar"
 };
+pageTitles["sales-history"] = "SatÄ±ÅŸlar";
+
+pageTitles["sales-history"] = "Sat\u0131\u015flar";
 
 function loadState() {
   try {
@@ -1741,6 +1747,7 @@ function renderAll() {
   renderCart();
   renderInventoryMovements();
   renderReports();
+  renderSalesHistoryPage();
   renderSettings();
   saveState();
 }
@@ -2570,6 +2577,7 @@ async function handleDocumentClick(event) {
   const paymentMethodValue = event.target.dataset.paymentMethod;
   const saleCustomerId = event.target.dataset.saleCustomer;
   const selectProductId = event.target.dataset.selectProduct;
+  const saleDetailId = event.target.dataset.saleDetail;
   const scanTargetId = event.target.dataset.scanTarget;
   const scanModeValue = event.target.dataset.scanMode;
 
@@ -2651,6 +2659,10 @@ async function handleDocumentClick(event) {
       selectedProductIds.delete(selectProductId);
     }
     renderProducts();
+  }
+
+  if (saleDetailId) {
+    openSaleDetail(saleDetailId);
   }
 
   if (scanTargetId) {
@@ -2852,6 +2864,26 @@ function bindEvents() {
   document.querySelector("#importFile").addEventListener("change", importData);
   document.querySelector("#excelImportFile").addEventListener("change", importExcelProducts);
   document.querySelector("#downloadExcelTemplateBtn").addEventListener("click", downloadExcelTemplate);
+  document.querySelector("#downloadSampleExcelBtn")?.addEventListener("click", downloadSampleExcelTemplate);
+  document.querySelector("#salesHistoryDateFrom")?.addEventListener("change", renderSalesHistoryPage);
+  document.querySelector("#salesHistoryDateTo")?.addEventListener("change", renderSalesHistoryPage);
+  document.querySelector("#salesHistorySearch")?.addEventListener("input", renderSalesHistoryPage);
+  document.querySelector("#toggleAllSalesSelectionBtn")?.addEventListener("click", () => {
+    const visibleIds = filterSalesHistory().map((sale) => sale.id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedSaleIds.has(id));
+    visibleIds.forEach((id) => {
+      if (allSelected) {
+        selectedSaleIds.delete(id);
+      } else {
+        selectedSaleIds.add(id);
+      }
+    });
+    renderSalesHistoryPage();
+  });
+  document.querySelector("#bulkSalesPdfBtn")?.addEventListener("click", printSelectedSalesPdf);
+  document.querySelector("#closeSaleDetailBtn")?.addEventListener("click", () => {
+    document.querySelector("#saleDetailOverlay")?.classList.add("hidden-overlay");
+  });
   document.querySelector("#removeProductImageBtn").addEventListener("click", () => {
     document.querySelector("#productImageData").value = "";
     document.querySelector("#productImageFile").value = "";
@@ -2870,6 +2902,7 @@ function bindEvents() {
   document.querySelector("#resetCustomerBtn").addEventListener("click", resetCustomerForm);
   document.addEventListener("click", handleDocumentClick);
   document.addEventListener("change", handleCartInlineChange);
+  document.addEventListener("change", handleSalesHistorySelectionChange);
   document.addEventListener("keydown", handleDocumentKeydown);
   document.addEventListener("input", handleDocumentInput);
 }
@@ -3108,7 +3141,324 @@ function handleCartInlineChange(event) {
   }
 }
 
+function handleSalesHistorySelectionChange(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLInputElement)) return;
+  if (!target.dataset.selectSale) return;
+
+  if (target.checked) {
+    selectedSaleIds.add(target.dataset.selectSale);
+  } else {
+    selectedSaleIds.delete(target.dataset.selectSale);
+  }
+  renderSalesHistoryPage();
+}
+
+function ensureSalesHistoryUI() {
+  if (!document.querySelector('.nav-tab[data-view="sales-history"]')) {
+    const reportsTab = document.querySelector('.nav-tab[data-view="reports"]');
+    reportsTab?.insertAdjacentHTML("beforebegin", '<button class="nav-tab" data-view="sales-history">Satışlar</button>');
+  }
+
+  if (!document.querySelector('.mobile-nav-link[data-mobile-view="sales-history"]')) {
+    const reportsMobileTab = document.querySelector('.mobile-nav-link[data-mobile-view="reports"]');
+    reportsMobileTab?.insertAdjacentHTML("beforebegin", '<button class="mobile-nav-link" data-mobile-view="sales-history" type="button">Satışlar</button>');
+  }
+
+  if (!document.querySelector("#view-sales-history")) {
+    const reportsView = document.querySelector("#view-reports");
+    reportsView?.insertAdjacentHTML(
+      "afterend",
+      `<section class="view" id="view-sales-history">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>Satışlar</h3>
+              <p class="muted">Yapılan satışları filtrele, görüntüle ve paylaş</p>
+            </div>
+            <div class="inline-actions">
+              <button type="button" id="toggleAllSalesSelectionBtn">Tümünü Seç</button>
+              <button type="button" id="bulkSalesPdfBtn">Toplu PDF</button>
+            </div>
+          </div>
+          <div class="form-grid compact">
+            <div class="field">
+              <label for="salesHistoryDateFrom">Başlangıç Tarihi</label>
+              <input id="salesHistoryDateFrom" type="date">
+            </div>
+            <div class="field">
+              <label for="salesHistoryDateTo">Bitiş Tarihi</label>
+              <input id="salesHistoryDateTo" type="date">
+            </div>
+            <div class="field span-2">
+              <label for="salesHistorySearch">Ara</label>
+              <input id="salesHistorySearch" type="search" placeholder="Müşteri adı, ödeme tipi veya ürün adı">
+            </div>
+          </div>
+          <div id="salesHistoryPageList" class="list-stack"></div>
+        </div>
+      </section>`
+    );
+  }
+
+  if (!document.querySelector("#saleDetailOverlay")) {
+    document.body.insertAdjacentHTML(
+      "beforeend",
+      `<div id="saleDetailOverlay" class="auth-overlay hidden-overlay">
+        <div class="auth-card">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Satış Detayı</p>
+              <h3 id="saleDetailTitle">Satış</h3>
+            </div>
+            <button type="button" id="closeSaleDetailBtn" class="ghost-btn">Kapat</button>
+          </div>
+          <div id="saleDetailContent" class="list-stack"></div>
+        </div>
+      </div>`
+    );
+  }
+}
+
+function openSaleDetail(saleId) {
+  const sale = getSaleById(saleId);
+  if (!sale) return showToast("Satış bulunamadı.");
+  const overlay = document.querySelector("#saleDetailOverlay");
+  const title = document.querySelector("#saleDetailTitle");
+  const content = document.querySelector("#saleDetailContent");
+  if (!overlay || !title || !content) return;
+
+  title.textContent = `${sale.mode === "wholesale" ? "Toptan" : "Perakende"} satış`;
+  content.innerHTML = `
+    <article class="record-card">
+      <div class="record-line"><strong>Müşteri</strong><span>${escapeHtml(getCustomerName(sale.customerId))}</span></div>
+      <div class="record-line"><strong>Ödeme</strong><span>${escapeHtml(sale.paymentMethod)}</span></div>
+      <div class="record-line"><strong>Tarih</strong><span>${escapeHtml(formatDate(sale.createdAt))}</span></div>
+      <div class="record-line"><strong>Toplam</strong><strong>${formatCurrency(sale.total)}</strong></div>
+      ${sale.discount ? `<div class="record-line"><strong>İndirim</strong><span>${formatCurrency(sale.discount)}</span></div>` : ""}
+      ${sale.note ? `<p class="muted">${escapeHtml(sale.note)}</p>` : ""}
+    </article>
+    ${sale.items.map((item) => `
+      <article class="record-card">
+        <div class="list-item-head">
+          <strong>${escapeHtml(item.name)}</strong>
+          <span>${item.quantity} adet</span>
+        </div>
+        <div class="record-line muted">
+          <span>${escapeHtml(item.barcode || "-")}</span>
+          <span>${formatCurrency(item.price)}</span>
+        </div>
+      </article>
+    `).join("")}
+  `;
+  overlay.classList.remove("hidden-overlay");
+}
+
+function filterSalesHistory() {
+  const dateFrom = document.querySelector("#salesHistoryDateFrom")?.value;
+  const dateTo = document.querySelector("#salesHistoryDateTo")?.value;
+  const search = document.querySelector("#salesHistorySearch")?.value.trim().toLowerCase() || "";
+
+  return [...state.sales]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .filter((sale) => {
+      const saleDate = sale.createdAt.slice(0, 10);
+      const matchesFrom = dateFrom ? saleDate >= dateFrom : true;
+      const matchesTo = dateTo ? saleDate <= dateTo : true;
+      const haystack = [
+        getCustomerName(sale.customerId),
+        sale.paymentMethod,
+        sale.mode === "wholesale" ? "toptan" : "perakende",
+        ...sale.items.map((item) => item.name)
+      ].join(" ").toLowerCase();
+      return matchesFrom && matchesTo && haystack.includes(search);
+    });
+}
+
+function renderSalesHistoryPage() {
+  const list = document.querySelector("#salesHistoryPageList");
+  if (!list) return;
+  const sales = filterSalesHistory();
+
+  list.innerHTML = sales.length
+    ? sales.map((sale) => `
+      <article class="record-card">
+        <div class="list-item-head">
+          <label class="bulk-check-label">
+            <input type="checkbox" data-select-sale="${sale.id}" ${selectedSaleIds.has(sale.id) ? "checked" : ""}>
+            <strong>${sale.mode === "wholesale" ? "Toptan" : "Perakende"} satış</strong>
+          </label>
+          <span>${formatCurrency(sale.total)}</span>
+        </div>
+        <div class="record-line muted">
+          <span>${escapeHtml(getCustomerName(sale.customerId))} / ${escapeHtml(sale.paymentMethod)}</span>
+          <span>${escapeHtml(formatDate(sale.createdAt))}</span>
+        </div>
+        <p class="muted">${sale.items.map((item) => `${item.name} x${item.quantity}`).join(", ")}</p>
+        <div class="inline-actions">
+          <button type="button" data-sale-detail="${sale.id}">Detay</button>
+          <button type="button" data-print-sale="${sale.id}">Yazdır</button>
+          <button type="button" data-email-sale="${sale.id}">Mail Gönder</button>
+          <button type="button" data-whatsapp-sale="${sale.id}">WhatsApp</button>
+        </div>
+      </article>
+    `).join("")
+    : `<article class="record-card"><span class="muted">Filtreye uygun satış bulunamadı.</span></article>`;
+}
+
+function printSelectedSalesPdf() {
+  const sales = filterSalesHistory().filter((sale) => selectedSaleIds.has(sale.id));
+  if (!sales.length) return showToast("PDF için satış seç.");
+  const sections = sales.map((sale) => `
+    <section style="break-inside: avoid; margin-bottom: 28px;">
+      <h3>${sale.mode === "wholesale" ? "Toptan" : "Perakende"} satış - ${formatDate(sale.createdAt)}</h3>
+      <p>Müşteri: ${escapeHtml(getCustomerName(sale.customerId))}</p>
+      <p>Ödeme: ${escapeHtml(sale.paymentMethod)}</p>
+      <p>Toplam: ${formatCurrency(sale.total)}</p>
+      <ul>${sale.items.map((item) => `<li>${escapeHtml(item.name)} x${item.quantity} - ${formatCurrency(item.price * item.quantity)}</li>`).join("")}</ul>
+    </section>
+  `).join("");
+  const printWindow = window.open("", "_blank", "width=900,height=900");
+  if (!printWindow) return showToast("PDF penceresi açılamadı.");
+  printWindow.document.write(`<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8"><title>Toplu Satış PDF</title><style>body{font-family:Arial,sans-serif;padding:24px;}h2,h3,p{margin:0 0 8px;}ul{margin:8px 0 0 18px;}section{border-bottom:1px solid #ddd;padding-bottom:16px;}</style></head><body><h2>${escapeHtml(state.settings.storeName || "OyuncakPOS")} - Satış Listesi</h2>${sections}<script>window.onload=function(){window.print();};</script></body></html>`);
+  printWindow.document.close();
+}
+
+function downloadExcelTemplate() {
+  const templateRows = [
+    {
+      Barkod: "869100100001",
+      "Ürün Adı": "Oyuncak Araba",
+      Marka: "ToyStar",
+      "Perakende Fiyat": 150,
+      "Toptan Fiyat": 100,
+      Stok: 12,
+      "Stok Kodu": "TT-100 0004"
+    },
+    {
+      Barkod: "869100100002",
+      "Ürün Adı": "Peluş Ayı",
+      Marka: "Mutlu Kids",
+      "Perakende Fiyat": 220,
+      "Toptan Fiyat": 160,
+      Stok: 8,
+      "Stok Kodu": "TT-160 0004"
+    }
+  ];
+
+  if (window.XLSX) {
+    const worksheet = window.XLSX.utils.json_to_sheet(templateRows);
+    const workbook = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(workbook, worksheet, "Urunler");
+    window.XLSX.writeFile(workbook, "oyuncakpos-excel-sablon.xlsx");
+    showToast("Excel şablonu indirildi.");
+    return;
+  }
+
+  const headers = Object.keys(templateRows[0]);
+  const rowsHtml = templateRows
+    .map((row) => `<tr>${headers.map((header) => `<td>${escapeHtml(String(row[header] ?? ""))}</td>`).join("")}</tr>`)
+    .join("");
+
+  const htmlTable = `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+  <meta charset="UTF-8">
+  <meta name="ProgId" content="Excel.Sheet">
+</head>
+<body>
+  <table>
+    <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+</body>
+</html>`;
+
+  const blob = new Blob(["\ufeff", htmlTable], { type: "application/vnd.ms-excel;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "oyuncakpos-excel-sablon.xls";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast("Excel şablonu indirildi.");
+}
+
+function downloadSampleExcelTemplate() {
+  const templateRows = [
+    {
+      Barkod: "869100100101",
+      "Ürün Adı": "Uzaktan Kumandali Araba",
+      Marka: "Speed Toys",
+      "Perakende Fiyat": 750,
+      "Toptan Fiyat": 500,
+      Stok: 14,
+      "Stok Kodu": "TT-500 0004"
+    },
+    {
+      Barkod: "869100100102",
+      "Ürün Adı": "Sesli Pelus Ayicik",
+      Marka: "Mutlu Kids",
+      "Perakende Fiyat": 420,
+      "Toptan Fiyat": 300,
+      Stok: 9,
+      "Stok Kodu": "TT-300 0004"
+    },
+    {
+      Barkod: "869100100103",
+      "Ürün Adı": "Ahsap Yapboz",
+      Marka: "Mini Usta",
+      "Perakende Fiyat": 180,
+      "Toptan Fiyat": 120,
+      Stok: 25,
+      "Stok Kodu": "TT-120 0004"
+    }
+  ];
+
+  if (window.XLSX) {
+    const worksheet = window.XLSX.utils.json_to_sheet(templateRows);
+    const workbook = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(workbook, worksheet, "OrnekUrunler");
+    window.XLSX.writeFile(workbook, "oyuncakpos-ornek-dolu-sablon.xlsx");
+    showToast("Örnek dolu şablon indirildi.");
+    return;
+  }
+
+  const headers = Object.keys(templateRows[0]);
+  const rowsHtml = templateRows
+    .map((row) => `<tr>${headers.map((header) => `<td>${escapeHtml(String(row[header] ?? ""))}</td>`).join("")}</tr>`)
+    .join("");
+
+  const htmlTable = `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+  <meta charset="UTF-8">
+  <meta name="ProgId" content="Excel.Sheet">
+</head>
+<body>
+  <table>
+    <thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+</body>
+</html>`;
+
+  const blob = new Blob(["\ufeff", htmlTable], { type: "application/vnd.ms-excel;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "oyuncakpos-ornek-dolu-sablon.xls";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast("Örnek dolu şablon indirildi.");
+}
+
 async function init() {
+  ensureSalesHistoryUI();
   bindEvents();
   enhanceSalesLayout();
   initSalesSearchBehavior();
