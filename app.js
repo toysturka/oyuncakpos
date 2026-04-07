@@ -635,12 +635,17 @@ function getProductLabelMarkup(product) {
 
   return `
     <div class="barcode-label">
-      <h4>${escapeHtml(product.name)}</h4>
-      ${product.image ? `<img class="product-thumb" src="${product.image}" alt="${escapeHtml(product.name)}">` : ""}
-      ${svg}
+      <div class="barcode-title">${escapeHtml(product.name)}</div>
+      <div class="barcode-body">
+        <div class="barcode-info-block">
+          <div class="barcode-price-label">Perakende</div>
+          <div class="barcode-price-value">${formatCurrency(product.retailPrice)}</div>
+        </div>
+        <div class="barcode-visual">${svg}</div>
+      </div>
       <div class="barcode-meta">
-        <span>${escapeHtml(product.category || "Kategori yok")}</span>
-        <strong>${formatCurrency(product.retailPrice)}</strong>
+        <span>Stok Kodu: ${escapeHtml(product.stockCode || generateStockCode(product.wholesalePrice))}</span>
+        <strong>Stok: ${Number(product.stock || 0)}</strong>
       </div>
     </div>
   `;
@@ -1821,14 +1826,19 @@ function printBarcodeLabel(productId) {
       <style>
         body { margin: 0; padding: 24px; font-family: Arial, sans-serif; background: #f5f5f5; }
         .sheet { display: flex; justify-content: center; }
-        .barcode-label { width: 320px; background: #fff; padding: 14px; border: 1px solid #ddd; }
-        .barcode-label h4 { margin: 0 0 8px; font-size: 18px; }
-        .barcode-label img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; margin-bottom: 8px; }
-        .barcode-meta { margin-top: 8px; display: flex; justify-content: space-between; font-size: 13px; }
+        .barcode-label { width: 420px; background: #fff; padding: 16px 18px; border: 1px solid #ddd; }
+        .barcode-title { text-align: center; font-size: 20px; font-weight: 700; margin-bottom: 12px; }
+        .barcode-body { display: grid; grid-template-columns: 1fr 1.3fr; gap: 18px; align-items: center; min-height: 120px; }
+        .barcode-info-block { display: grid; gap: 8px; align-content: center; }
+        .barcode-price-label { font-size: 14px; color: #555; }
+        .barcode-price-value { font-size: 28px; font-weight: 700; }
+        .barcode-visual { display: flex; align-items: center; justify-content: center; }
+        .barcode-visual svg { width: 100%; height: auto; }
+        .barcode-meta { margin-top: 10px; display: flex; justify-content: space-between; gap: 8px; font-size: 14px; font-weight: 700; }
         @media print {
           body { background: #fff; padding: 0; }
           .sheet { justify-content: flex-start; }
-          .barcode-label { border: 0; width: 58mm; }
+          .barcode-label { border: 0; width: 74mm; }
         }
       </style>
     </head>
@@ -1866,14 +1876,19 @@ function printMultipleBarcodeLabels(products) {
         body { margin: 0; padding: 24px; font-family: Arial, sans-serif; background: #f5f5f5; }
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
         .sheet { display: flex; justify-content: center; }
-        .barcode-label { width: 320px; background: #fff; padding: 14px; border: 1px solid #ddd; }
-        .barcode-label h4 { margin: 0 0 8px; font-size: 18px; }
-        .barcode-label img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; margin-bottom: 8px; }
-        .barcode-meta { margin-top: 8px; display: flex; justify-content: space-between; font-size: 13px; }
+        .barcode-label { width: 420px; background: #fff; padding: 16px 18px; border: 1px solid #ddd; }
+        .barcode-title { text-align: center; font-size: 20px; font-weight: 700; margin-bottom: 12px; }
+        .barcode-body { display: grid; grid-template-columns: 1fr 1.3fr; gap: 18px; align-items: center; min-height: 120px; }
+        .barcode-info-block { display: grid; gap: 8px; align-content: center; }
+        .barcode-price-label { font-size: 14px; color: #555; }
+        .barcode-price-value { font-size: 28px; font-weight: 700; }
+        .barcode-visual { display: flex; align-items: center; justify-content: center; }
+        .barcode-visual svg { width: 100%; height: auto; }
+        .barcode-meta { margin-top: 10px; display: flex; justify-content: space-between; gap: 8px; font-size: 14px; font-weight: 700; }
         @media print {
           body { background: #fff; padding: 0; }
           .grid { grid-template-columns: repeat(2, 1fr); gap: 8mm; }
-          .barcode-label { border: 0; width: 58mm; }
+          .barcode-label { border: 0; width: 74mm; }
         }
       </style>
     </head>
