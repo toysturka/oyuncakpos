@@ -305,6 +305,78 @@ async function ensureCameraPermission() {
   }
 }
 
+async function startHtml5QrScanner(preferredCameraConfig, preferDesktopStyle) {
+  if (!window.Html5Qrcode) return false;
+
+  html5QrCodeInstance = new window.Html5Qrcode("scannerReader");
+  const formatsToSupport = window.Html5QrcodeSupportedFormats
+    ? [
+        window.Html5QrcodeSupportedFormats.EAN_13,
+        window.Html5QrcodeSupportedFormats.EAN_8,
+        window.Html5QrcodeSupportedFormats.CODE_128,
+        window.Html5QrcodeSupportedFormats.UPC_A,
+        window.Html5QrcodeSupportedFormats.UPC_E
+      ]
+    : undefined;
+
+  const onDecode = (decodedText) => {
+    const rawValue = String(decodedText || "").trim();
+    if (!rawValue || scannerLocked) return;
+    scannerLocked = true;
+    applyScannedBarcode(rawValue);
+    if (navigator.vibrate) navigator.vibrate(60);
+    void stopBarcodeScanner();
+  };
+
+  const mobileConfigs = [
+    {
+      camera: { facingMode: "environment" },
+      config: { fps: 18, qrbox: { width: 240, height: 140 }, disableFlip: false, formatsToSupport }
+    },
+    {
+      camera: { facingMode: { ideal: "environment" } },
+      config: { fps: 15, disableFlip: false, formatsToSupport }
+    },
+    {
+      camera: { facingMode: "user" },
+      config: { fps: 12, disableFlip: false, formatsToSupport }
+    }
+  ];
+
+  const desktopConfigs = [
+    {
+      camera: preferredCameraConfig,
+      config: {
+        fps: preferDesktopStyle ? 20 : 18,
+        qrbox: preferDesktopStyle ? { width: 420, height: 220 } : { width: 260, height: 180 },
+        aspectRatio: 1.7777778,
+        disableFlip: false,
+        formatsToSupport
+      }
+    }
+  ];
+
+  const attempts = isLikelyMobileDevice() ? mobileConfigs : desktopConfigs;
+
+  for (const attempt of attempts) {
+    try {
+      await html5QrCodeInstance.start(attempt.camera, attempt.config, onDecode, () => {});
+      return true;
+    } catch (error) {
+      console.error(error);
+      try {
+        await html5QrCodeInstance.stop();
+      } catch {}
+      try {
+        await html5QrCodeInstance.clear();
+      } catch {}
+      html5QrCodeInstance = new window.Html5Qrcode("scannerReader");
+    }
+  }
+
+  return false;
+}
+
 async function startDesktopQuagga(preferredCameraConfig) {
   if (!window.Quagga) return false;
 
@@ -882,37 +954,8 @@ async function startBarcodeScanner(targetInputId, mode) {
 
     setScannerSurface("reader");
     if (window.Html5Qrcode) {
-      html5QrCodeInstance = new window.Html5Qrcode("scannerReader");
-      const formatsToSupport = window.Html5QrcodeSupportedFormats
-        ? [
-            window.Html5QrcodeSupportedFormats.EAN_13,
-            window.Html5QrcodeSupportedFormats.EAN_8,
-            window.Html5QrcodeSupportedFormats.CODE_128,
-            window.Html5QrcodeSupportedFormats.UPC_A,
-            window.Html5QrcodeSupportedFormats.UPC_E
-          ]
-        : undefined;
-
-      await html5QrCodeInstance.start(
-        preferredCameraConfig,
-        {
-          fps: preferHtml5Scanner ? 20 : 30,
-          qrbox: preferHtml5Scanner ? { width: 420, height: 220 } : { width: 260, height: 180 },
-          aspectRatio: 1.7777778,
-          disableFlip: false,
-          formatsToSupport
-        },
-        (decodedText) => {
-          const rawValue = String(decodedText || "").trim();
-          if (!rawValue || scannerLocked) return;
-          scannerLocked = true;
-          applyScannedBarcode(rawValue);
-          if (navigator.vibrate) navigator.vibrate(60);
-          void stopBarcodeScanner();
-        },
-        () => {}
-      );
-      return;
+      const started = await startHtml5QrScanner(preferredCameraConfig, preferHtml5Scanner);
+      if (started) return;
     }
 
     setScannerOverlayVisible(false);
