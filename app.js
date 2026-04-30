@@ -253,7 +253,7 @@ function runNativeBarcodeLoop(video) {
 
 async function getPreferredCameraConfig() {
   if (isLikelyMobileDevice()) {
-    return { facingMode: { ideal: "environment" } };
+    return { facingMode: "environment" };
   }
 
   if (window.Html5Qrcode?.getCameras) {
@@ -850,24 +850,34 @@ async function startBarcodeScanner(targetInputId, mode) {
     }
 
     if (!preferHtml5Scanner && "BarcodeDetector" in window) {
-      setScannerSurface("video");
-      barcodeDetectorInstance = new window.BarcodeDetector({
-        formats: ["ean_13", "ean_8", "code_128", "upc_a", "upc_e"]
-      });
-      scannerStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          ...preferredCameraConfig,
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        },
-        audio: false
-      });
-      const video = document.querySelector("#scannerVideo");
-      video.srcObject = scannerStream;
-      const [videoTrack] = scannerStream.getVideoTracks();
-      await optimizeScannerTrack(videoTrack);
-      runNativeBarcodeLoop(video);
-      return;
+      try {
+        setScannerSurface("video");
+        barcodeDetectorInstance = new window.BarcodeDetector({
+          formats: ["ean_13", "ean_8", "code_128", "upc_a", "upc_e"]
+        });
+        scannerStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            ...preferredCameraConfig,
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          },
+          audio: false
+        });
+        const video = document.querySelector("#scannerVideo");
+        video.srcObject = scannerStream;
+        await video.play().catch(() => {});
+        const [videoTrack] = scannerStream.getVideoTracks();
+        await optimizeScannerTrack(videoTrack);
+        runNativeBarcodeLoop(video);
+        return;
+      } catch (mobileDetectorError) {
+        console.error(mobileDetectorError);
+        if (scannerStream) {
+          scannerStream.getTracks().forEach((track) => track.stop());
+          scannerStream = null;
+        }
+        barcodeDetectorInstance = null;
+      }
     }
 
     setScannerSurface("reader");
