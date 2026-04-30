@@ -290,6 +290,21 @@ async function getPreferredCameraConfig() {
   return { facingMode: "user" };
 }
 
+async function ensureCameraPermission() {
+  if (!isLikelyMobileDevice()) return true;
+
+  try {
+    const warmupStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: "environment" } },
+      audio: false
+    });
+    warmupStream.getTracks().forEach((track) => track.stop());
+    return true;
+  } catch (error) {
+    throw error;
+  }
+}
+
 async function startDesktopQuagga(preferredCameraConfig) {
   if (!window.Quagga) return false;
 
@@ -820,6 +835,8 @@ async function startBarcodeScanner(targetInputId, mode) {
     scannerLocked = false;
     setScannerOverlayVisible(true);
 
+    await ensureCameraPermission();
+
     const preferHtml5Scanner = !isLikelyMobileDevice();
     const preferredCameraConfig = await getPreferredCameraConfig();
 
@@ -893,6 +910,11 @@ async function startBarcodeScanner(targetInputId, mode) {
   } catch (error) {
     console.error(error);
     await stopBarcodeScanner();
+    const errorName = String(error?.name || "");
+    if (errorName === "NotAllowedError" || errorName === "PermissionDeniedError") {
+      showToast("Kamera izni verilmedi. Tarayıcı izinlerinden kamerayı açıp tekrar dene.");
+      return;
+    }
     showToast("Kamera açılamadı. Telefonda kamera izni verip tekrar dene.");
   }
 }
@@ -1099,7 +1121,7 @@ function getProductLabelMarkup(product) {
         <div class="barcode-visual">${svg}</div>
       </div>
       <div class="barcode-meta">
-        <span>${product.brand ? escapeHtml(product.brand) : ""}</span>
+        <span>${escapeHtml(product.stockCode || generateStockCode(product.wholesalePrice || 0))}</span>
         <strong>${Number(product.stock || 0)}</strong>
       </div>
     </div>
@@ -2839,6 +2861,14 @@ function bindEvents() {
   });
   document.querySelector("#bulkDeleteProductsBtn").addEventListener("click", handleBulkDeleteProducts);
   document.querySelector("#bulkPrintBarcodesBtn").addEventListener("click", handleBulkPrintBarcodes);
+  document.querySelector("#bulkDeleteProductsMenuBtn")?.addEventListener("click", () => {
+    handleBulkDeleteProducts();
+    document.querySelector(".bulk-menu")?.removeAttribute("open");
+  });
+  document.querySelector("#bulkPrintBarcodesMenuBtn")?.addEventListener("click", () => {
+    handleBulkPrintBarcodes();
+    document.querySelector(".bulk-menu")?.removeAttribute("open");
+  });
   document.querySelector("#saveAllPricesBtn").addEventListener("click", saveAllVisiblePriceEdits);
   document.querySelector("#productSearchInput").addEventListener("input", renderProducts);
   document.querySelector("#catalogSearchInput").addEventListener("input", renderProducts);
