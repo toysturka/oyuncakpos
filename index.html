@@ -277,6 +277,13 @@
                     <span>Tümünü Seç</span>
                   </label>
                   <strong id="selectedProductsCount">0 secili</strong>
+                  <details class="bulk-menu">
+                    <summary class="ghost-btn compact-btn bulk-menu-trigger">Toplu Islemler</summary>
+                    <div class="bulk-menu-panel">
+                      <button type="button" id="bulkPrintBarcodesMenuBtn" class="bulk-menu-item">Toplu Barkod Yazdir</button>
+                      <button type="button" id="bulkDeleteProductsMenuBtn" class="bulk-menu-item danger-text">Toplu Urun Sil</button>
+                    </div>
+                  </details>
                 </div>
                 <div class="bulk-actions-buttons">
                   <button type="button" id="openProductEditorBtn" class="ghost-btn compact-btn">Ürün Ekle</button>
@@ -370,6 +377,13 @@
                 <div class="barcode-preview-card">
                   <div id="productBarcodePreview" class="barcode-svg-wrap muted">12 veya 13 haneli barkod girdiginde burada etiket onizlemesi olusur.</div>
                   <span class="muted">Yazdırma için sayısal 12 veya 13 haneli barkod kullan.</span>
+                </div>
+              </div>
+              <div class="field span-2">
+                <label>Excel Sablonlari</label>
+                <div class="inline-field">
+                  <button type="button" id="downloadExcelTemplateEditorBtn" class="ghost-btn">Excel Sablon</button>
+                  <button type="button" id="downloadSampleExcelEditorBtn" class="ghost-btn">Ornek Dolu Sablon</button>
                 </div>
               </div>
               <div class="actions span-2">
@@ -673,5 +687,6 @@
   <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="app.js"></script>
+  <script src="advanced.js"></script>
 </body>
 </html>
