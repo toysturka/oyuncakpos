@@ -1810,6 +1810,16 @@ function renderSettings() {
   document.querySelector("#densitySetting").value = state.settings.density || "comfortable";
 }
 
+function renderAdvancedSalesUI() {}
+
+function renderAdvancedCustomerUI() {}
+
+function renderAdvancedReportsUI() {}
+
+function renderAdvancedSettingsUI() {}
+
+function renderAdvancedRoleGating() {}
+
 function renderAll() {
   applyCustomizationSettings();
   renderDashboard();
@@ -1820,6 +1830,11 @@ function renderAll() {
   renderReports();
   renderSalesHistoryPage();
   renderSettings();
+  renderAdvancedSalesUI();
+  renderAdvancedCustomerUI();
+  renderAdvancedReportsUI();
+  renderAdvancedSettingsUI();
+  renderAdvancedRoleGating();
   saveState();
 }
 
